@@ -175,12 +175,16 @@ test("human approval gate: interrupts on QA pass, loops on changes_requested, en
       },
     });
 
+    let onApprovedCalledWith: string | undefined;
     const graph = buildProductionGraph({
       llm,
       search: new FakeSearchProvider(),
       storage: new FakeStorageProvider(),
       voice: new FakeVoiceProvider(),
       renderer: new FakeVideoRenderer(),
+      onApproved: async (contentItemId) => {
+        onApprovedCalledWith = contentItemId;
+      },
     }).compile({
       checkpointer: new MemorySaver(),
     });
@@ -226,6 +230,7 @@ test("human approval gate: interrupts on QA pass, loops on changes_requested, en
     const allApprovals = await db.select().from(approvals).where(eq(approvals.contentItemId, item.id));
     assert.equal(allApprovals.length, 2);
     assert.ok(allApprovals.some((a) => a.decision === "approved"));
+    assert.equal(onApprovedCalledWith, item.id);
   } finally {
     await cleanup({ workspaceId: workspace.id, campaignId: campaign.id, briefId: brief.id, itemId: item.id });
   }

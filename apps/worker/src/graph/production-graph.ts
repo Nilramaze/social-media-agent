@@ -20,6 +20,7 @@ import {
   type StorageProvider,
   type VoiceProvider,
 } from "@sma/providers";
+import { enqueuePublish } from "@sma/queue";
 import { ProductionState } from "./state";
 
 function requireEnv(name: string): string {
@@ -34,6 +35,8 @@ export interface ProductionGraphDeps {
   storage: StorageProvider;
   voice: VoiceProvider;
   renderer?: VideoRenderer;
+  /** Defaults to the real publish queue; override in tests to avoid touching Redis. */
+  onApproved?: (contentItemId: string) => Promise<void>;
 }
 
 export function buildProductionGraph({
@@ -42,6 +45,7 @@ export function buildProductionGraph({
   storage,
   voice,
   renderer,
+  onApproved = (contentItemId) => enqueuePublish({ contentItemId }),
 }: ProductionGraphDeps) {
   return new StateGraph(ProductionState)
     .addNode("research", async (state) => {
@@ -91,6 +95,10 @@ export function buildProductionGraph({
       await recordApprovalDecision(state.contentItemId, decision);
       return { approvalDecision: decision.decision, approvalTarget: decision.target };
     })
+    .addNode("schedule_publish", async (state) => {
+      await onApproved(state.contentItemId);
+      return {};
+    })
     .addEdge(START, "research")
     .addEdge("research", "content")
     .addEdge("content", "voice")
@@ -105,9 +113,13 @@ export function buildProductionGraph({
       return state.qaCategory === "visual" ? "creative" : "content";
     })
     .addConditionalEdges("human_approval", (state) => {
-      if (state.approvalDecision !== "changes_requested") return END;
-      return state.approvalTarget === "creative" ? "creative" : "content";
-    });
+      if (state.approvalDecision === "approved") return "schedule_publish";
+      if (state.approvalDecision === "changes_requested") {
+        return state.approvalTarget === "creative" ? "creative" : "content";
+      }
+      return END; // rejected
+    })
+    .addEdge("schedule_publish", END);
 }
 
 export async function compileProductionGraph(databaseUrl: string) {
