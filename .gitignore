@@ -8,3 +8,6 @@ build/
 .DS_Store
 .turbo/
 coverage/
+
+# Design reference mockups (not app source)
+/stitch_*/

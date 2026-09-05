@@ -10,6 +10,7 @@ import {
 import { desc, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { getStorageProvider } from "@/lib/storage";
+import { STATUS_LABELS } from "@/lib/labels";
 import { DeleteButton } from "@/components/delete-button";
 import { ReviewActions } from "./actions";
 
@@ -77,15 +78,18 @@ export default async function ReviewDetailPage({
   const { item, brief, currentVersion, research, qaHistory, videoUrl } = data;
 
   return (
-    <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 p-8">
+    <div className="w-full max-w-7xl mx-auto px-8 py-10 space-y-8">
       <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold">{brief?.topic ?? "Content"}</h1>
-          <p className="text-sm text-neutral-500">
-            {item.format} &middot; Status: {item.status} &middot; QA-Retries: {item.qaRetryCount}
-          </p>
+        <div className="space-y-1 max-w-3xl">
+          <span className="px-2 py-0.5 rounded-full bg-surface-card text-ink-muted text-mono-data uppercase tracking-widest border border-border-subtle">
+            {item.format} &middot; {STATUS_LABELS[item.status] ?? item.status}
+          </span>
+          <h1 className="font-serif italic text-headline-lg text-primary tracking-tight">
+            {brief?.topic ?? "Content"}
+          </h1>
+          <p className="text-mono-data text-ink-muted">QA-Retries: {item.qaRetryCount}</p>
           {item.status === "failed" && item.lastError ? (
-            <p className="text-red-600 text-sm mt-1">{item.lastError}</p>
+            <p className="text-body-md text-agent-terminating">{item.lastError}</p>
           ) : null}
         </div>
         <DeleteButton
@@ -95,92 +99,158 @@ export default async function ReviewDetailPage({
         />
       </div>
 
-      {currentVersion ? (
-        <section className="flex flex-col gap-4 rounded-lg border border-neutral-200 p-5 dark:border-neutral-800">
-          <div>
-            <h2 className="text-sm font-semibold text-neutral-500">Hook</h2>
-            <p>{currentVersion.hook}</p>
-          </div>
-          <div>
-            <h2 className="text-sm font-semibold text-neutral-500">Skript</h2>
-            <p className="whitespace-pre-wrap">{currentVersion.script}</p>
-          </div>
-          <div>
-            <h2 className="text-sm font-semibold text-neutral-500">Caption</h2>
-            <p className="whitespace-pre-wrap">{currentVersion.caption}</p>
-          </div>
-          <div>
-            <h2 className="text-sm font-semibold text-neutral-500">CTA</h2>
-            <p>{currentVersion.cta}</p>
-          </div>
-          <div>
-            <h2 className="text-sm font-semibold text-neutral-500">Hashtags</h2>
-            <p>{currentVersion.hashtags.join(" ")}</p>
-          </div>
-          <p className="text-xs text-neutral-400">Version {currentVersion.versionNumber}</p>
-        </section>
-      ) : (
-        <p className="text-neutral-500">Noch keine Content-Version vorhanden.</p>
-      )}
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
+        {/* LEFT: editorial content + audit log */}
+        <div className="xl:col-span-7 space-y-6">
+          {currentVersion ? (
+            <section className="rounded-xl bg-surface-card border border-border-subtle p-6 space-y-5">
+              <div>
+                <h2 className="text-label-sm text-ink-muted uppercase tracking-wider mb-1">Hook</h2>
+                <p className="text-body-lg text-primary">{currentVersion.hook}</p>
+              </div>
+              <div className="h-px bg-border-subtle" />
+              <div>
+                <h2 className="text-label-sm text-ink-muted uppercase tracking-wider mb-1">Skript</h2>
+                <p className="text-body-md text-on-surface-variant whitespace-pre-wrap leading-relaxed">
+                  {currentVersion.script}
+                </p>
+              </div>
+              <div className="h-px bg-border-subtle" />
+              <div>
+                <h2 className="text-label-sm text-ink-muted uppercase tracking-wider mb-1">Caption</h2>
+                <p className="text-body-md text-on-surface-variant whitespace-pre-wrap leading-relaxed">
+                  {currentVersion.caption}
+                </p>
+              </div>
+              <div className="h-px bg-border-subtle" />
+              <div>
+                <h2 className="text-label-sm text-ink-muted uppercase tracking-wider mb-1">CTA</h2>
+                <p className="text-body-md text-primary">{currentVersion.cta}</p>
+              </div>
+              <div className="flex flex-wrap gap-2 pt-1">
+                {currentVersion.hashtags.map((tag) => (
+                  <span key={tag} className="px-2.5 py-1 rounded bg-surface-bone text-mono-data text-primary">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+              <p className="text-mono-data text-ink-muted">Version {currentVersion.versionNumber}</p>
+            </section>
+          ) : (
+            <p className="text-body-md text-ink-muted">Noch keine Content-Version vorhanden.</p>
+          )}
 
-      {videoUrl ? (
-        <section className="flex flex-col items-center gap-2 rounded-lg border border-neutral-200 p-4 dark:border-neutral-800">
-          <h2 className="self-start text-sm font-semibold text-neutral-500">Video</h2>
-          {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-          <video
-            src={videoUrl}
-            controls
-            className="max-h-[70vh] rounded-md"
-            style={{ aspectRatio: "9 / 16" }}
-          />
-        </section>
-      ) : (
-        <p className="text-sm text-neutral-500">Noch kein Video gerendert.</p>
-      )}
+          {research ? (
+            <details className="rounded-xl bg-surface-card border border-border-subtle p-5">
+              <summary className="cursor-pointer text-label-sm text-ink-muted uppercase tracking-wider">
+                Recherche-Grundlage
+              </summary>
+              <p className="mt-3 whitespace-pre-wrap text-body-md text-on-surface-variant leading-relaxed">
+                {research.summary}
+              </p>
+              <ul className="mt-3 flex flex-col gap-1">
+                {research.sources.map((s) => (
+                  <li key={s.url}>
+                    <a
+                      href={s.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-mono-data text-agent-pulse underline"
+                    >
+                      {s.title}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
 
-      {research ? (
-        <details className="rounded-lg border border-neutral-200 p-4 dark:border-neutral-800">
-          <summary className="cursor-pointer text-sm font-semibold text-neutral-500">
-            Recherche-Grundlage
-          </summary>
-          <p className="mt-2 whitespace-pre-wrap text-sm">{research.summary}</p>
-          <ul className="mt-2 list-inside list-disc text-sm">
-            {research.sources.map((s) => (
-              <li key={s.url}>
-                <a href={s.url} target="_blank" rel="noreferrer" className="underline">
-                  {s.title}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </details>
-      ) : null}
-
-      {qaHistory.length > 0 ? (
-        <details className="rounded-lg border border-neutral-200 p-4 dark:border-neutral-800">
-          <summary className="cursor-pointer text-sm font-semibold text-neutral-500">
-            QA-Historie ({qaHistory.length})
-          </summary>
-          <ul className="mt-2 flex flex-col gap-2 text-sm">
-            {qaHistory.map((qa) => (
-              <li key={qa.id}>
-                <span className={qa.verdict === "pass" ? "text-green-600" : "text-red-600"}>
-                  {qa.verdict}
+          {qaHistory.length > 0 ? (
+            <section className="rounded-xl bg-surface-card border border-border-subtle p-6 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-label-sm text-ink-muted uppercase tracking-wider">
+                  Agent Activity &amp; Audit Log
                 </span>
-                {qa.judgeFeedback ? ` — ${qa.judgeFeedback}` : null}
-              </li>
-            ))}
-          </ul>
-        </details>
-      ) : null}
+                <span className="text-mono-data text-ink-muted">{qaHistory.length} QA-Durchlaeufe</span>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                {qaHistory.map((qa) => (
+                  <div key={qa.id} className="flex items-start justify-between gap-4 p-3 rounded bg-surface-bone">
+                    <div className="flex flex-col">
+                      <span className={qa.verdict === "pass" ? "text-agent-active text-body-md font-medium" : "text-agent-terminating text-body-md font-medium"}>
+                        {qa.verdict === "pass" ? "Pass" : "Fail"}
+                        {qa.category ? ` · ${qa.category}` : ""}
+                      </span>
+                      {qa.judgeFeedback ? (
+                        <span className="text-mono-data text-ink-muted mt-0.5">{qa.judgeFeedback}</span>
+                      ) : null}
+                    </div>
+                    <span className="text-mono-data text-ink-muted shrink-0">
+                      {new Date(qa.createdAt).toLocaleTimeString("de-DE")}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
+        </div>
 
-      {item.status === "ready_for_review" ? (
-        <ReviewActions contentItemId={item.id} />
-      ) : (
-        <p className="text-sm text-neutral-500">
-          Dieses Item wartet aktuell nicht auf Review (Status: {item.status}).
-        </p>
-      )}
-    </main>
+        {/* RIGHT: Instagram-style live preview */}
+        <div className="xl:col-span-5 space-y-4 xl:sticky xl:top-20">
+          <div className="p-3 px-4 rounded-xl bg-surface-card border border-border-subtle flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-agent-standby animate-pulse" />
+            <span className="text-label-md text-primary">Vorschau</span>
+          </div>
+
+          <div className="w-full max-w-[420px] mx-auto bg-surface-bone rounded-2xl border border-border-subtle overflow-hidden flex flex-col">
+            <div className="h-14 px-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-agent-standby via-agent-pulse to-ink-graphite p-[1.5px]">
+                  <div className="w-full h-full rounded-full bg-surface-subtle" />
+                </div>
+                <span className="text-body-md font-semibold text-primary">dein_account</span>
+              </div>
+              <span className="material-symbols-outlined text-ink-graphite">more_horiz</span>
+            </div>
+
+            <div className="relative w-full aspect-[9/16] bg-surface-container-highest overflow-hidden flex items-center justify-center">
+              {videoUrl ? (
+                // eslint-disable-next-line jsx-a11y/media-has-caption
+                <video src={videoUrl} controls className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-body-md text-ink-muted">Noch kein Video gerendert</span>
+              )}
+            </div>
+
+            <div className="px-4 pt-3 pb-2 flex items-center justify-between">
+              <div className="flex items-center gap-4 text-ink-graphite">
+                <span className="material-symbols-outlined text-[22px]">favorite</span>
+                <span className="material-symbols-outlined text-[22px]">chat_bubble</span>
+                <span className="material-symbols-outlined text-[22px]">send</span>
+              </div>
+              <span className="material-symbols-outlined text-[22px] text-ink-graphite">bookmark</span>
+            </div>
+
+            {currentVersion ? (
+              <div className="px-4 pb-4 flex flex-col gap-1 text-body-md leading-snug">
+                <span className="font-semibold text-primary">dein_account</span>{" "}
+                <span className="text-on-surface">{currentVersion.caption}</span>
+                <div className="text-ink-muted text-mono-data pt-1 leading-relaxed">
+                  {currentVersion.hashtags.join(" ")}
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          {item.status === "ready_for_review" ? (
+            <ReviewActions contentItemId={item.id} />
+          ) : (
+            <p className="text-body-md text-ink-muted text-center">
+              Wartet aktuell nicht auf Review (Status: {STATUS_LABELS[item.status] ?? item.status}).
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

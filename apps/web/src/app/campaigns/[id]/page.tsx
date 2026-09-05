@@ -13,6 +13,15 @@ import { DeleteButton } from "@/components/delete-button";
 
 export const dynamic = "force-dynamic";
 
+const STATUS_DOT: Record<string, string> = {
+  ready_for_review: "bg-agent-standby",
+  approved: "bg-agent-active",
+  published: "bg-agent-active",
+  needs_human_review: "bg-agent-terminating",
+  failed: "bg-agent-terminating",
+  rejected: "bg-agent-terminating",
+};
+
 async function getCampaignDetail(id: string) {
   const [campaign] = await db.select().from(campaigns).where(eq(campaigns.id, id)).limit(1);
   if (!campaign) return null;
@@ -41,18 +50,23 @@ export default async function CampaignDetailPage({
   const { campaign, pillars, items } = data;
 
   return (
-    <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 p-8">
+    <div className="w-full max-w-7xl mx-auto px-8 py-10 space-y-10">
       <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold">{campaign.goalText}</h1>
-          <p className="text-sm text-neutral-500">
-            Status: {campaign.status} &middot; {new Date(campaign.createdAt).toLocaleString("de-DE")}
-          </p>
-          <div className="flex gap-3 text-sm">
-            <Link href="/pipeline" className="underline text-neutral-500">
-              Live-Uebersicht aller Agenten
+        <div className="space-y-2 max-w-3xl">
+          <div className="flex items-center gap-3">
+            <span className="px-2 py-0.5 rounded-full bg-surface-card text-ink-muted text-mono-data uppercase tracking-widest border border-border-subtle">
+              {campaign.status}
+            </span>
+            <span className="text-mono-data text-ink-muted">
+              {new Date(campaign.createdAt).toLocaleString("de-DE")}
+            </span>
+          </div>
+          <h1 className="font-serif italic text-headline-lg text-primary tracking-tight">{campaign.goalText}</h1>
+          <div className="flex gap-4 text-body-md">
+            <Link href="/pipeline" className="underline text-ink-muted hover:text-primary">
+              Live-Uebersicht
             </Link>
-            <Link href="/campaigns" className="underline text-neutral-500">
+            <Link href="/campaigns" className="underline text-ink-muted hover:text-primary">
               Alle Kampagnen
             </Link>
           </div>
@@ -66,68 +80,84 @@ export default async function CampaignDetailPage({
       </div>
 
       {campaign.status === "failed" ? (
-        <p className="rounded-lg border border-red-500/40 bg-red-500/5 p-3 text-sm text-red-600">
+        <p className="rounded-xl border border-agent-terminating/40 bg-agent-terminating/5 p-4 text-body-md text-agent-terminating">
           Planning fehlgeschlagen: {campaign.planningError ?? "Unbekannter Fehler"}
         </p>
       ) : pillars.length === 0 ? (
-        <p className="text-neutral-500">
-          Strategist plant noch die Content-Pillars... (Seite neu laden)
-        </p>
+        <p className="text-body-md text-ink-muted">Strategist plant noch die Content-Pillars… (Seite neu laden)</p>
       ) : (
-        <section className="flex flex-col gap-2">
-          <h2 className="text-sm font-semibold text-neutral-500">Content-Pillars</h2>
-          <ul className="flex flex-col gap-1 text-sm">
+        <section className="space-y-3">
+          <h2 className="text-label-sm text-ink-muted uppercase tracking-wider">
+            Content-Pillars ({pillars.length})
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {pillars.map((p) => (
-              <li key={p.id}>
-                <span className="font-medium">{p.name}</span> — {p.description}
-              </li>
+              <div key={p.id} className="rounded-lg bg-surface-card border border-border-subtle p-5">
+                <h3 className="font-serif text-title-md text-primary mb-1">{p.name}</h3>
+                <p className="text-body-md text-on-surface-variant leading-relaxed">{p.description}</p>
+              </div>
             ))}
-          </ul>
+          </div>
         </section>
       )}
 
-      <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-semibold text-neutral-500">Content-Items ({items.length})</h2>
+      <section className="space-y-3">
+        <h2 className="text-label-sm text-ink-muted uppercase tracking-wider">
+          Content-Items ({items.length})
+        </h2>
         {items.length === 0 ? (
-          <p className="text-neutral-500 text-sm">Noch keine Content-Items angelegt.</p>
+          <p className="text-body-md text-ink-muted">Noch keine Content-Items angelegt.</p>
         ) : (
-          <ul className="flex flex-col gap-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {items.map(({ brief, item }) => (
-              <li
+              <div
                 key={brief.id}
-                className="flex items-center justify-between rounded-lg border border-neutral-200 p-3 text-sm dark:border-neutral-800"
+                className="rounded-lg bg-surface-card border border-border-subtle p-5 flex flex-col justify-between"
               >
                 <div>
-                  <p className="font-medium">{brief.topic}</p>
-                  <p className="text-neutral-500">
-                    {brief.format} &middot;{" "}
-                    {item
-                      ? item.currentStep
-                        ? `${STEP_LABELS[item.currentStep] ?? item.currentStep} laeuft...`
-                        : (STATUS_LABELS[item.status] ?? item.status)
-                      : "wird angelegt..."}
-                  </p>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="px-2 py-0.5 rounded bg-surface-bone text-mono-data text-primary uppercase">
+                      {brief.format}
+                    </span>
+                    {item ? (
+                      <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-surface-bone">
+                        <span
+                          className={`w-1.5 h-1.5 rounded-full ${item.currentStep ? "bg-agent-active animate-pulse" : (STATUS_DOT[item.status] ?? "bg-outline-variant")}`}
+                        />
+                        <span className="text-label-sm text-primary font-semibold">
+                          {item.currentStep
+                            ? (STEP_LABELS[item.currentStep] ?? item.currentStep)
+                            : (STATUS_LABELS[item.status] ?? item.status)}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-label-sm text-ink-muted">wird angelegt…</span>
+                    )}
+                  </div>
+                  <h3 className="font-serif text-title-md text-primary mb-1">{brief.topic}</h3>
                   {item?.status === "failed" && item.lastError ? (
-                    <p className="text-red-600 text-xs mt-1">{item.lastError}</p>
+                    <p className="text-mono-data text-agent-terminating mt-1">{item.lastError}</p>
                   ) : null}
                 </div>
                 {item ? (
-                  <div className="flex items-center gap-3 shrink-0 ml-4">
-                    <Link href={`/review/${item.id}`} className="underline">
-                      ansehen
+                  <div className="pt-4 flex items-center gap-2">
+                    <Link
+                      href={`/review/${item.id}`}
+                      className="flex-1 text-center px-4 py-2 rounded bg-primary text-on-primary text-body-md hover:bg-primary-container transition-colors"
+                    >
+                      Ansehen
                     </Link>
                     <DeleteButton
                       endpoint={`/api/content-items/${item.id}`}
                       confirmText={`Content-Item "${brief.topic}" wirklich loeschen?`}
-                      label="loeschen"
                     />
                   </div>
                 ) : null}
-              </li>
+              </div>
             ))}
-          </ul>
+          </div>
         )}
       </section>
-    </main>
+    </div>
   );
 }

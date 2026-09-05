@@ -22,29 +22,33 @@ export default async function ReviewQueuePage() {
   const items = await getReviewItems();
 
   return (
-    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 p-8">
-      <h1 className="text-2xl font-semibold">Review-Queue</h1>
+    <div className="w-full max-w-3xl mx-auto px-8 py-10 space-y-6">
+      <div className="space-y-2">
+        <span className="px-2 py-0.5 rounded-full bg-surface-card text-ink-muted text-mono-data uppercase tracking-widest border border-border-subtle">
+          Freigabe
+        </span>
+        <h1 className="font-serif italic text-headline-lg text-primary tracking-tight">Review-Queue</h1>
+      </div>
 
       {items.length === 0 ? (
-        <p className="text-neutral-500">Nichts zu review — alles erledigt.</p>
+        <p className="text-body-md text-ink-muted">Nichts zu review — alles erledigt.</p>
       ) : (
         <ul className="flex flex-col gap-3">
           {items.map((item) => (
             <li key={item.id}>
               <Link
                 href={`/review/${item.id}`}
-                className="flex flex-col gap-1 rounded-lg border border-neutral-200 p-4 hover:border-neutral-400 dark:border-neutral-800 dark:hover:border-neutral-600"
+                className="flex flex-col gap-1 rounded-lg border border-border-subtle bg-surface-card p-5 hover:border-primary transition-colors"
               >
-                <span className="font-medium">{item.topic}</span>
-                <span className="text-sm text-neutral-500">
-                  {item.format} &middot;{" "}
-                  {new Date(item.createdAt).toLocaleString("de-DE")}
+                <span className="text-title-md text-primary font-medium">{item.topic}</span>
+                <span className="text-mono-data text-ink-muted">
+                  {item.format} &middot; {new Date(item.createdAt).toLocaleString("de-DE")}
                 </span>
               </Link>
             </li>
           ))}
         </ul>
       )}
-    </main>
+    </div>
   );
 }

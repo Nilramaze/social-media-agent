@@ -1,19 +1,16 @@
-import Link from "next/link";
 import { PipelineView } from "./pipeline-view";
 
 export default function PipelinePage() {
   return (
-    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 p-8">
-      <div>
-        <h1 className="text-2xl font-semibold">Pipeline-Uebersicht</h1>
-        <p className="text-sm text-neutral-500">
-          Aktualisiert sich automatisch alle 2 Sekunden.
-        </p>
-        <Link href="/" className="text-sm underline text-neutral-500">
-          Zur Startseite
-        </Link>
+    <div className="w-full max-w-5xl mx-auto px-8 py-10 space-y-2">
+      <div className="space-y-2 mb-6">
+        <span className="px-2 py-0.5 rounded-full bg-surface-card text-ink-muted text-mono-data uppercase tracking-widest border border-border-subtle">
+          Live
+        </span>
+        <h1 className="font-serif italic text-headline-lg text-primary tracking-tight">Pipeline-Uebersicht</h1>
+        <p className="text-body-md text-ink-muted">Aktualisiert sich automatisch alle 2 Sekunden.</p>
       </div>
       <PipelineView />
-    </main>
+    </div>
   );
 }

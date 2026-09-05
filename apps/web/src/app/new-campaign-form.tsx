@@ -31,22 +31,29 @@ export function NewCampaignForm() {
   }
 
   return (
-    <form onSubmit={submit} className="flex w-full max-w-md flex-col gap-3">
+    <form onSubmit={submit} className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <label htmlFor="goal-text" className="font-sans text-label-md text-on-surface-variant uppercase tracking-wider">
+          Kampagnenziel
+        </label>
+        <span className="font-sans text-mono-data text-ink-muted">Erforderlich</span>
+      </div>
       <textarea
+        id="goal-text"
         required
-        className="w-full rounded-md border border-neutral-300 p-3 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+        className="w-full bg-surface-bone p-4 rounded-lg text-primary text-body-lg placeholder:text-ink-muted/50 border border-border-subtle focus:outline-none focus:ring-1 focus:ring-ink-graphite transition-all resize-none"
         rows={3}
-        placeholder="Kampagnenziel, z.B. 'Leads fuer KI-Automatisierungsprojekte bei kleinen Unternehmen gewinnen'"
+        placeholder="z.B. Leads fuer KI-Automatisierungsprojekte bei kleinen Unternehmen gewinnen"
         value={goalText}
         onChange={(e) => setGoalText(e.target.value)}
       />
-      {error ? <p className="text-sm text-red-600">{error}</p> : null}
+      {error ? <p className="text-body-md text-agent-terminating">{error}</p> : null}
       <button
         type="submit"
         disabled={pending || goalText.trim().length === 0}
-        className="rounded-md bg-black px-5 py-2.5 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50 dark:bg-white dark:text-black dark:hover:bg-neutral-200"
+        className="w-full bg-primary hover:bg-primary-container active:scale-[0.98] text-on-primary text-body-lg py-3.5 px-6 rounded-lg font-medium transition-all disabled:opacity-50 disabled:active:scale-100"
       >
-        {pending ? "Wird angelegt..." : "Kampagne starten"}
+        {pending ? "Wird angelegt…" : "Kampagne starten"}
       </button>
     </form>
   );

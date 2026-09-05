@@ -44,9 +44,9 @@ function DeleteItemButton({ id, topic }: { id: string; topic: string }) {
       type="button"
       onClick={onDelete}
       disabled={pending}
-      className="shrink-0 rounded-md border border-red-600 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-600 hover:text-white disabled:opacity-50"
+      className="shrink-0 rounded border border-agent-terminating/40 px-2.5 py-1 text-label-md text-agent-terminating hover:bg-agent-terminating hover:text-on-error transition-colors disabled:opacity-50"
     >
-      {pending ? "..." : "loeschen"}
+      {pending ? "…" : "loeschen"}
     </button>
   );
 }
@@ -88,100 +88,118 @@ export function PipelineView() {
 
   return (
     <div className="flex flex-col gap-8">
-      {error ? <p className="text-sm text-red-600">Verbindungsfehler: {error}</p> : null}
+      {error ? <p className="text-body-md text-agent-terminating">Verbindungsfehler: {error}</p> : null}
 
-      <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-semibold text-neutral-500">
-          Aktiv ({active.length})
-        </h2>
+      <section className="space-y-3">
+        <div className="flex items-center gap-2">
+          <h2 className="text-label-sm text-ink-muted uppercase tracking-wider">Aktiv</h2>
+          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-surface-card border border-border-subtle text-mono-data text-primary">
+            {active.length}
+          </span>
+        </div>
         {active.length === 0 ? (
-          <p className="text-sm text-neutral-500">
+          <p className="text-body-md text-ink-muted">
             Gerade arbeitet kein Agent. (Worker laeuft? Queue leer?)
           </p>
         ) : (
-          <ul className="flex flex-col gap-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {active.map((item) => {
               const secs = elapsedSeconds(item.currentStepStartedAt, now);
               return (
-                <li
+                <div
                   key={item.id}
-                  className="flex items-center justify-between rounded-lg border border-green-500/40 bg-green-500/5 p-3 text-sm"
+                  className="flex items-center justify-between gap-3 rounded-lg border border-agent-active/30 bg-agent-active/5 p-4"
                 >
-                  <div className="min-w-0">
-                    <p className="font-medium truncate">{item.topic}</p>
-                    <p className="text-neutral-500">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-agent-active animate-pulse" />
+                      <span className="text-body-md font-medium text-primary truncate">{item.topic}</span>
+                    </div>
+                    <p className="text-mono-data text-ink-muted">
                       {STEP_LABELS[item.currentStep!] ?? item.currentStep}
                       {secs !== null ? ` · seit ${secs}s` : ""}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0 ml-4">
-                    <Link href={`/review/${item.id}`} className="underline">
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Link
+                      href={`/review/${item.id}`}
+                      className="text-body-md text-primary underline hover:text-ink-muted"
+                    >
                       ansehen
                     </Link>
                     <DeleteItemButton id={item.id} topic={item.topic} />
                   </div>
-                </li>
+                </div>
               );
             })}
-          </ul>
+          </div>
         )}
       </section>
 
-      <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-semibold text-neutral-500">
-          Wartet auf Freigabe ({waiting.length})
-        </h2>
+      <section className="space-y-3">
+        <div className="flex items-center gap-2">
+          <h2 className="text-label-sm text-ink-muted uppercase tracking-wider">Wartet auf Freigabe</h2>
+          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-surface-card border border-border-subtle text-mono-data text-primary">
+            {waiting.length}
+          </span>
+        </div>
         {waiting.length === 0 ? (
-          <p className="text-sm text-neutral-500">Nichts zur Freigabe offen.</p>
+          <p className="text-body-md text-ink-muted">Nichts zur Freigabe offen.</p>
         ) : (
-          <ul className="flex flex-col gap-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {waiting.map((item) => (
-              <li
+              <div
                 key={item.id}
-                className="flex items-center justify-between rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-sm"
+                className="flex items-center justify-between gap-3 rounded-lg border border-agent-standby/30 bg-agent-standby/5 p-4"
               >
-                <div className="min-w-0">
-                  <p className="font-medium truncate">{item.topic}</p>
-                  <p className="text-neutral-500">{item.format}</p>
+                <div className="min-w-0 flex-1">
+                  <p className="text-body-md font-medium text-primary truncate">{item.topic}</p>
+                  <p className="text-mono-data text-ink-muted">{item.format}</p>
                 </div>
-                <div className="flex items-center gap-2 shrink-0 ml-4">
-                  <Link href={`/review/${item.id}`} className="underline">
+                <div className="flex items-center gap-2 shrink-0">
+                  <Link
+                    href={`/review/${item.id}`}
+                    className="text-body-md text-primary underline hover:text-ink-muted"
+                  >
                     freigeben
                   </Link>
                   <DeleteItemButton id={item.id} topic={item.topic} />
                 </div>
-              </li>
+              </div>
             ))}
-          </ul>
+          </div>
         )}
       </section>
 
-      <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-semibold text-neutral-500">
-          Warteschlange &amp; Abgeschlossen ({rest.length})
-        </h2>
-        <ul className="flex flex-col gap-1">
+      <section className="space-y-3">
+        <div className="flex items-center gap-2">
+          <h2 className="text-label-sm text-ink-muted uppercase tracking-wider">Warteschlange &amp; Abgeschlossen</h2>
+          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-surface-card border border-border-subtle text-mono-data text-primary">
+            {rest.length}
+          </span>
+        </div>
+        <div className="flex flex-col gap-1.5">
           {rest.map((item) => (
-            <li
+            <div
               key={item.id}
-              className="flex items-center justify-between rounded-md border border-neutral-200 px-3 py-2 text-sm dark:border-neutral-800"
+              className="flex items-center justify-between gap-3 rounded-lg border border-border-subtle bg-surface-card px-4 py-2.5"
             >
-              <div className="min-w-0">
-                <p className="truncate">{item.topic}</p>
-                <p className="text-neutral-500 text-xs">
+              <div className="min-w-0 flex-1">
+                <p className="text-body-md text-primary truncate">{item.topic}</p>
+                <p className="text-mono-data text-ink-muted">
                   {STATUS_LABELS[item.status] ?? item.status}
                   {item.qaRetryCount > 0 ? ` · ${item.qaRetryCount} QA-Retry(s)` : ""}
                 </p>
               </div>
-              <div className="flex items-center gap-2 shrink-0 ml-4">
-                <Link href={`/review/${item.id}`} className="underline text-xs">
+              <div className="flex items-center gap-2 shrink-0">
+                <Link href={`/review/${item.id}`} className="text-mono-data text-primary underline hover:text-ink-muted">
                   ansehen
                 </Link>
                 <DeleteItemButton id={item.id} topic={item.topic} />
               </div>
-            </li>
+            </div>
           ))}
-        </ul>
+        </div>
       </section>
     </div>
   );

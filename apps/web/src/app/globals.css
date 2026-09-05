@@ -1,26 +1,104 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* Design system: "Autonomous Agent Atelier" - warm editorial stone/graphite
+   palette, Newsreader serif for display type, Hanken Grotesk for UI/data. */
+@theme {
+  --color-surface: #faf9f6;
+  --color-surface-dim: #dbdad7;
+  --color-surface-bright: #faf9f6;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #f4f3f1;
+  --color-surface-container: #efeeeb;
+  --color-surface-container-high: #e9e8e5;
+  --color-surface-container-highest: #e3e2e0;
+  --color-surface-bone: #faf9f6;
+  --color-surface-card: #f3eee8;
+  --color-surface-subtle: #edeae6;
+  --color-surface-variant: #e3e2e0;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --color-on-surface: #1a1c1a;
+  --color-on-surface-variant: #4d4541;
+  --color-on-background: #1a1c1a;
+  --color-background: #faf9f6;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-ink-graphite: #262220;
+  --color-ink-muted: #7a736e;
+
+  --color-outline: #7f7570;
+  --color-outline-variant: #d0c4be;
+  --color-border-subtle: #e2ddd7;
+
+  --color-primary: #100c0b;
+  --color-on-primary: #ffffff;
+  --color-primary-container: #262220;
+  --color-on-primary-container: #8f8986;
+
+  --color-secondary: #645d58;
+  --color-on-secondary: #ffffff;
+  --color-secondary-container: #eae1da;
+  --color-on-secondary-container: #6a635e;
+
+  --color-error: #ba1a1a;
+  --color-on-error: #ffffff;
+  --color-error-container: #ffdad6;
+  --color-on-error-container: #93000a;
+
+  --color-agent-active: #2e7d32;
+  --color-agent-standby: #b58237;
+  --color-agent-terminating: #c62828;
+  --color-agent-pulse: #4a6cf7;
+
+  --font-serif: var(--font-newsreader), ui-serif, serif;
+  --font-sans: var(--font-hanken-grotesk), ui-sans-serif, system-ui, sans-serif;
+
+  --text-display-lg: 56px;
+  --text-display-lg--line-height: 64px;
+  --text-display-lg--letter-spacing: -0.03em;
+
+  --text-headline-lg: 36px;
+  --text-headline-lg--line-height: 44px;
+  --text-headline-lg--letter-spacing: -0.02em;
+
+  --text-headline-lg-mobile: 28px;
+  --text-headline-lg-mobile--line-height: 34px;
+  --text-headline-lg-mobile--letter-spacing: -0.01em;
+
+  --text-headline-md: 24px;
+  --text-headline-md--line-height: 32px;
+  --text-headline-md--letter-spacing: -0.02em;
+  --text-headline-md--font-weight: 500;
+
+  --text-title-md: 18px;
+  --text-title-md--line-height: 26px;
+  --text-title-md--letter-spacing: -0.01em;
+  --text-title-md--font-weight: 600;
+
+  --text-body-lg: 16px;
+  --text-body-lg--line-height: 24px;
+
+  --text-body-md: 14px;
+  --text-body-md--line-height: 20px;
+
+  --text-label-md: 12px;
+  --text-label-md--line-height: 16px;
+  --text-label-md--letter-spacing: 0.04em;
+  --text-label-md--font-weight: 500;
+
+  --text-label-sm: 11px;
+  --text-label-sm--line-height: 14px;
+  --text-label-sm--letter-spacing: 0.06em;
+  --text-label-sm--font-weight: 600;
+
+  --text-mono-data: 12px;
+  --text-mono-data--line-height: 16px;
+  --text-mono-data--letter-spacing: 0.01em;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-surface);
+  color: var(--color-on-surface);
+}
+
+::-webkit-scrollbar {
+  display: none;
 }

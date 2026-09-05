@@ -7,7 +7,7 @@ export function DeleteButton({
   endpoint,
   confirmText,
   redirectTo,
-  label = "Löschen",
+  label = "Loeschen",
 }: {
   endpoint: string;
   confirmText: string;
@@ -41,9 +41,9 @@ export function DeleteButton({
       type="button"
       onClick={onDelete}
       disabled={pending}
-      className="shrink-0 rounded-md border border-red-600 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-600 hover:text-white disabled:opacity-50"
+      className="shrink-0 rounded border border-agent-terminating/40 px-3 py-1.5 text-label-md text-agent-terminating hover:bg-agent-terminating hover:text-on-error transition-colors disabled:opacity-50"
     >
-      {pending ? "..." : label}
+      {pending ? "…" : label}
     </button>
   );
 }
