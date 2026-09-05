@@ -3,6 +3,7 @@ packages:
   - "packages/*"
 allowBuilds:
   esbuild: true
+  msgpackr-extract: true
   unrs-resolver: true
 minimumReleaseAgeExclude:
   - '@anthropic-ai/sdk@0.124.0'
