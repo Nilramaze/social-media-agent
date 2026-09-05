@@ -9,7 +9,12 @@
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@langchain/core": "^1.2.9",
+    "@langchain/langgraph": "^1.4.14",
+    "@langchain/langgraph-checkpoint-postgres": "^1.0.5",
+    "zod": "^4.5.4"
+  },
   "devDependencies": {
     "@types/node": "^22.15.0",
     "tsx": "^4.19.2",
