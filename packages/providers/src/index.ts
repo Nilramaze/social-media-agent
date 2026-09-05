@@ -9,3 +9,4 @@ export * from "./publish/mock";
 export * from "./analytics/types";
 export * from "./analytics/mock";
 export * from "./testing/fake-llm";
+export * from "./testing/fake-storage";

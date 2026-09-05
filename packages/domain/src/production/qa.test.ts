@@ -7,6 +7,7 @@ import {
   contentBriefs,
   contentItems,
   contentVersions,
+  creativeVersions,
   db,
   qaResults,
   workspaces,
@@ -62,8 +63,25 @@ async function seedItemWithVersion(overrides: Partial<{ hook: string; script: st
   return { workspace, campaign, brief, item: { ...item, currentContentVersionId: version.id }, version };
 }
 
+async function addCreativeVersion(item: { id: string; workspaceId: string }) {
+  const [creative] = await db
+    .insert(creativeVersions)
+    .values({
+      workspaceId: item.workspaceId,
+      contentItemId: item.id,
+      versionNumber: 1,
+      remotionProps: { scenes: [] },
+      assetRefs: ["https://fake-storage.test/video.mp4"],
+    })
+    .returning();
+  if (!creative) throw new Error("failed");
+  await db.update(contentItems).set({ currentCreativeVersionId: creative.id }).where(eq(contentItems.id, item.id));
+  return creative;
+}
+
 async function cleanup(ids: { workspaceId: string; campaignId: string; briefId: string; itemId: string }) {
   await db.delete(qaResults).where(eq(qaResults.contentItemId, ids.itemId));
+  await db.delete(creativeVersions).where(eq(creativeVersions.contentItemId, ids.itemId));
   await db.delete(contentVersions).where(eq(contentVersions.contentItemId, ids.itemId));
   await db.delete(contentItems).where(eq(contentItems.id, ids.itemId));
   await db.delete(contentBriefs).where(eq(contentBriefs.id, ids.briefId));
@@ -88,6 +106,7 @@ test("runQA fails on buzzwords without calling the LLM judge", async () => {
 
     const result = await runQA(item.id, { llm });
     assert.equal(result.verdict, "fail");
+    assert.equal(result.category, "script");
     assert.equal(result.needsHumanReview, false);
     assert.equal(judgeCalled, false);
 
@@ -99,8 +118,9 @@ test("runQA fails on buzzwords without calling the LLM judge", async () => {
   }
 });
 
-test("runQA passes clean content via the LLM judge", async () => {
+test("runQA passes clean content and an existing creative version via the LLM judge", async () => {
   const { workspace, campaign, brief, item } = await seedItemWithVersion();
+  await addCreativeVersion(item);
 
   try {
     const judgeOutput: QaJudgeOutput = { verdict: "pass", feedback: "Sieht gut aus." };
@@ -108,9 +128,28 @@ test("runQA passes clean content via the LLM judge", async () => {
 
     const result = await runQA(item.id, { llm });
     assert.equal(result.verdict, "pass");
+    assert.equal(result.category, null);
 
     const [updated] = await db.select().from(contentItems).where(eq(contentItems.id, item.id));
     assert.equal(updated?.status, "ready_for_review");
+  } finally {
+    await cleanup({ workspaceId: workspace.id, campaignId: campaign.id, briefId: brief.id, itemId: item.id });
+  }
+});
+
+test("runQA fails with category visual when no creative version exists yet", async () => {
+  const { workspace, campaign, brief, item } = await seedItemWithVersion();
+
+  try {
+    const judgeOutput: QaJudgeOutput = { verdict: "pass", feedback: "Sieht gut aus." };
+    const llm = new FakeLLMProvider({ generateStructured: () => judgeOutput });
+
+    const result = await runQA(item.id, { llm });
+    assert.equal(result.verdict, "fail");
+    assert.equal(result.category, "visual");
+
+    const [updated] = await db.select().from(contentItems).where(eq(contentItems.id, item.id));
+    assert.equal(updated?.status, "drafting");
   } finally {
     await cleanup({ workspaceId: workspace.id, campaignId: campaign.id, briefId: brief.id, itemId: item.id });
   }

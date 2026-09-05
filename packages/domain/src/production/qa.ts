@@ -2,6 +2,7 @@ import {
   brandProfiles,
   contentItems,
   contentVersions,
+  creativeVersions,
   db as defaultDb,
   qaResults,
   type Db,
@@ -42,6 +43,7 @@ export interface RunQADeps {
 export interface RunQAResult {
   verdict: "pass" | "fail";
   needsHumanReview: boolean;
+  category: "script" | "visual" | "both" | null;
 }
 
 export async function runQA(
@@ -98,6 +100,7 @@ export async function runQA(
 
   let verdict: "pass" | "fail" = structuralErrors.length > 0 ? "fail" : "pass";
   let feedback = structuralErrors.join("; ");
+  let category: "script" | "visual" | "both" | null = verdict === "fail" ? "script" : null;
 
   if (verdict === "pass") {
     const prompt = `Pruefe den folgenden Content:
@@ -120,6 +123,24 @@ Zielgruppe: ${brandProfile.targetAudience}`;
     });
     verdict = judged.verdict;
     feedback = judged.feedback;
+    category = verdict === "fail" ? "script" : null;
+  }
+
+  if (verdict === "pass") {
+    let creativeOk = Boolean(item.currentCreativeVersionId);
+    if (creativeOk && item.currentCreativeVersionId) {
+      const [creative] = await db
+        .select()
+        .from(creativeVersions)
+        .where(eq(creativeVersions.id, item.currentCreativeVersionId))
+        .limit(1);
+      creativeOk = Boolean(creative && creative.assetRefs.length > 0);
+    }
+    if (!creativeOk) {
+      verdict = "fail";
+      category = "visual";
+      feedback = "Kein gerendertes Video mit Assets vorhanden.";
+    }
   }
 
   await db.insert(qaResults).values({
@@ -127,7 +148,7 @@ Zielgruppe: ${brandProfile.targetAudience}`;
     contentItemId: item.id,
     contentVersionId: version.id,
     verdict,
-    category: verdict === "fail" ? "script" : null,
+    category,
     schemaErrors: structuralErrors.length > 0 ? structuralErrors : null,
     judgeFeedback: feedback || null,
   });
@@ -137,7 +158,7 @@ Zielgruppe: ${brandProfile.targetAudience}`;
       .update(contentItems)
       .set({ status: "ready_for_review" })
       .where(eq(contentItems.id, item.id));
-    return { verdict: "pass", needsHumanReview: false };
+    return { verdict: "pass", needsHumanReview: false, category: null };
   }
 
   const newRetryCount = item.qaRetryCount + 1;
@@ -150,5 +171,5 @@ Zielgruppe: ${brandProfile.targetAudience}`;
     })
     .where(eq(contentItems.id, item.id));
 
-  return { verdict: "fail", needsHumanReview };
+  return { verdict: "fail", needsHumanReview, category };
 }

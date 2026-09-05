@@ -6,6 +6,10 @@ export const ProductionState = Annotation.Root({
     reducer: (_current, update) => update,
     default: () => undefined,
   }),
+  qaCategory: Annotation<"script" | "visual" | "both" | null>({
+    reducer: (_current, update) => update,
+    default: () => null,
+  }),
   needsHumanReview: Annotation<boolean>({
     reducer: (_current, update) => update,
     default: () => false,
@@ -13,6 +17,10 @@ export const ProductionState = Annotation.Root({
   approvalDecision: Annotation<
     "approved" | "changes_requested" | "rejected" | undefined
   >({
+    reducer: (_current, update) => update,
+    default: () => undefined,
+  }),
+  approvalTarget: Annotation<"content" | "creative" | undefined>({
     reducer: (_current, update) => update,
     default: () => undefined,
   }),

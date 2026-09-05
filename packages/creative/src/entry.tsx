@@ -1,0 +1,40 @@
+import { Composition, registerRoot } from "remotion";
+import { ReelComposition } from "./Composition";
+import { DEFAULT_FPS, DEFAULT_HEIGHT, DEFAULT_WIDTH, type ReelProps } from "./schema";
+
+export const REEL_COMPOSITION_ID = "Reel";
+
+function calculateMetadata({ props }: { props: ReelProps }) {
+  const fps = props.fps ?? DEFAULT_FPS;
+  const totalSeconds = props.scenes.reduce((sum, s) => sum + s.durationSeconds, 0);
+  return {
+    durationInFrames: Math.max(1, Math.round(totalSeconds * fps)),
+    fps,
+    width: props.width ?? DEFAULT_WIDTH,
+    height: props.height ?? DEFAULT_HEIGHT,
+  };
+}
+
+const defaultProps: ReelProps = {
+  scenes: [{ text: "...", durationSeconds: 2, backgroundColor: "#111111" }],
+  fps: DEFAULT_FPS,
+  width: DEFAULT_WIDTH,
+  height: DEFAULT_HEIGHT,
+};
+
+function Root() {
+  return (
+    <Composition
+      id={REEL_COMPOSITION_ID}
+      component={ReelComposition}
+      durationInFrames={DEFAULT_FPS * 2}
+      fps={DEFAULT_FPS}
+      width={DEFAULT_WIDTH}
+      height={DEFAULT_HEIGHT}
+      calculateMetadata={calculateMetadata}
+      defaultProps={defaultProps}
+    />
+  );
+}
+
+registerRoot(Root);

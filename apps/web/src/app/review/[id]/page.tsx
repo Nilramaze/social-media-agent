@@ -2,12 +2,14 @@ import {
   contentBriefs,
   contentItems,
   contentVersions,
+  creativeVersions,
   db,
   qaResults,
   researchFindings,
 } from "@sma/db";
 import { desc, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
+import { getStorageProvider } from "@/lib/storage";
 import { ReviewActions } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -42,7 +44,24 @@ async function getContentItemDetail(id: string) {
     .where(eq(qaResults.contentItemId, id))
     .orderBy(desc(qaResults.createdAt));
 
-  return { item, brief, currentVersion, research: research ?? null, qaHistory };
+  let videoUrl: string | null = null;
+  if (item.currentCreativeVersionId) {
+    const [creative] = await db
+      .select()
+      .from(creativeVersions)
+      .where(eq(creativeVersions.id, item.currentCreativeVersionId))
+      .limit(1);
+    const storageKey = creative?.assetRefs[0];
+    if (storageKey) {
+      try {
+        videoUrl = await getStorageProvider().getSignedUrl(storageKey, 3600);
+      } catch {
+        videoUrl = null;
+      }
+    }
+  }
+
+  return { item, brief, currentVersion, research: research ?? null, qaHistory, videoUrl };
 }
 
 export default async function ReviewDetailPage({
@@ -54,7 +73,7 @@ export default async function ReviewDetailPage({
   const data = await getContentItemDetail(id);
   if (!data) notFound();
 
-  const { item, brief, currentVersion, research, qaHistory } = data;
+  const { item, brief, currentVersion, research, qaHistory, videoUrl } = data;
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 p-8">
@@ -91,6 +110,21 @@ export default async function ReviewDetailPage({
         </section>
       ) : (
         <p className="text-neutral-500">Noch keine Content-Version vorhanden.</p>
+      )}
+
+      {videoUrl ? (
+        <section className="flex flex-col items-center gap-2 rounded-lg border border-neutral-200 p-4 dark:border-neutral-800">
+          <h2 className="self-start text-sm font-semibold text-neutral-500">Video</h2>
+          {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+          <video
+            src={videoUrl}
+            controls
+            className="max-h-[70vh] rounded-md"
+            style={{ aspectRatio: "9 / 16" }}
+          />
+        </section>
+      ) : (
+        <p className="text-sm text-neutral-500">Noch kein Video gerendert.</p>
       )}
 
       {research ? (

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 type Decision = "approved" | "changes_requested" | "rejected";
+type Target = "content" | "creative";
 
 export function ReviewActions({ contentItemId }: { contentItemId: string }) {
   const router = useRouter();
@@ -11,8 +12,9 @@ export function ReviewActions({ contentItemId }: { contentItemId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [showFeedback, setShowFeedback] = useState(false);
   const [feedback, setFeedback] = useState("");
+  const [target, setTarget] = useState<Target>("content");
 
-  async function submit(decision: Decision, feedbackText?: string) {
+  async function submit(decision: Decision, opts?: { feedback?: string; target?: Target }) {
     setPending(true);
     setError(null);
     try {
@@ -21,8 +23,8 @@ export function ReviewActions({ contentItemId }: { contentItemId: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           decision,
-          target: decision === "changes_requested" ? "content" : undefined,
-          feedback: feedbackText,
+          target: opts?.target,
+          feedback: opts?.feedback,
         }),
       });
       if (!res.ok) {
@@ -43,6 +45,24 @@ export function ReviewActions({ contentItemId }: { contentItemId: string }) {
 
       {showFeedback ? (
         <div className="flex flex-col gap-2">
+          <div className="flex gap-4 text-sm">
+            <label className="flex items-center gap-1.5">
+              <input
+                type="radio"
+                checked={target === "content"}
+                onChange={() => setTarget("content")}
+              />
+              Text (Hook/Skript/Caption/CTA)
+            </label>
+            <label className="flex items-center gap-1.5">
+              <input
+                type="radio"
+                checked={target === "creative"}
+                onChange={() => setTarget("creative")}
+              />
+              Video
+            </label>
+          </div>
           <textarea
             className="w-full rounded-md border border-neutral-300 p-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
             rows={3}
@@ -54,7 +74,7 @@ export function ReviewActions({ contentItemId }: { contentItemId: string }) {
             <button
               type="button"
               disabled={pending || feedback.trim().length === 0}
-              onClick={() => submit("changes_requested", feedback.trim())}
+              onClick={() => submit("changes_requested", { feedback: feedback.trim(), target })}
               className="rounded-md bg-amber-500 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
             >
               Aenderung absenden

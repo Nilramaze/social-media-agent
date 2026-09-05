@@ -10,6 +10,7 @@
     "test": "node --import tsx --test src/**/*.test.ts"
   },
   "dependencies": {
+    "@sma/creative": "workspace:*",
     "@sma/db": "workspace:*",
     "@sma/providers": "workspace:*",
     "drizzle-orm": "^0.44.2",

@@ -6,5 +6,7 @@ export * from "./production/schema";
 export * from "./production/bootstrap";
 export * from "./production/research";
 export * from "./production/content";
+export * from "./production/creative";
 export * from "./production/qa";
 export * from "./production/approval";
+export * from "./testing/fake-video-renderer";
