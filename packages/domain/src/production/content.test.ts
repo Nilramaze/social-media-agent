@@ -8,6 +8,7 @@ import {
   contentItems,
   contentVersions,
   db,
+  qaResults,
   researchFindings,
   workspaces,
 } from "@sma/db";
@@ -48,6 +49,7 @@ async function seedContentItemWithResearch() {
 }
 
 async function cleanup(ids: { workspaceId: string; campaignId: string; briefId: string; itemId: string }) {
+  await db.delete(qaResults).where(eq(qaResults.contentItemId, ids.itemId));
   await db.delete(contentVersions).where(eq(contentVersions.contentItemId, ids.itemId));
   await db.delete(researchFindings).where(eq(researchFindings.briefId, ids.briefId));
   await db.delete(contentItems).where(eq(contentItems.id, ids.itemId));
@@ -79,6 +81,55 @@ test("runContent persists a content version and marks the item in_qa", async () 
     const [updatedItem] = await db.select().from(contentItems).where(eq(contentItems.id, item.id));
     assert.equal(updatedItem?.status, "in_qa");
     assert.equal(updatedItem?.currentContentVersionId, contentVersionId);
+  } finally {
+    await cleanup({ workspaceId: workspace.id, campaignId: campaign.id, briefId: brief.id, itemId: item.id });
+  }
+});
+
+test("runContent incorporates QA feedback and bumps the version number on revision", async () => {
+  const { workspace, campaign, brief, item } = await seedContentItemWithResearch();
+
+  try {
+    const firstOutput: ContentOutput = {
+      hook: "Schwacher Hook",
+      script: "...",
+      caption: "...",
+      cta: "...",
+      hashtags: ["#a", "#b", "#c"],
+    };
+    const llmFirst = new FakeLLMProvider({ generateStructured: () => firstOutput });
+    const { contentVersionId: firstVersionId } = await runContent(item.id, { llm: llmFirst });
+
+    await db.insert(qaResults).values({
+      workspaceId: workspace.id,
+      contentItemId: item.id,
+      contentVersionId: firstVersionId,
+      verdict: "fail",
+      category: "script",
+      judgeFeedback: "Der Hook ist zu generisch, konkreter formulieren.",
+    });
+
+    let seenPrompt = "";
+    const secondOutput: ContentOutput = {
+      hook: "Verlierst du 5 Stunden pro Woche an Buchhaltung?",
+      script: "...",
+      caption: "...",
+      cta: "...",
+      hashtags: ["#a", "#b", "#c"],
+    };
+    const llmSecond = new FakeLLMProvider({
+      generateStructured: (input) => {
+        seenPrompt = input.prompt;
+        return secondOutput;
+      },
+    });
+    const { contentVersionId: secondVersionId } = await runContent(item.id, { llm: llmSecond });
+
+    assert.ok(seenPrompt.includes("Der Hook ist zu generisch"));
+
+    const [secondVersion] = await db.select().from(contentVersions).where(eq(contentVersions.id, secondVersionId));
+    assert.equal(secondVersion?.versionNumber, 2);
+    assert.equal(secondVersion?.revisionFeedback, "Der Hook ist zu generisch, konkreter formulieren.");
   } finally {
     await cleanup({ workspaceId: workspace.id, campaignId: campaign.id, briefId: brief.id, itemId: item.id });
   }

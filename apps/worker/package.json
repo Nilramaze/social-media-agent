@@ -7,16 +7,19 @@
     "dev": "tsx --env-file-if-exists=../../.env watch src/index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node --env-file-if-exists=../../.env dist/index.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test src/**/*.test.ts"
   },
   "dependencies": {
     "@langchain/core": "^1.2.9",
     "@langchain/langgraph": "^1.4.14",
     "@langchain/langgraph-checkpoint-postgres": "^1.0.5",
+    "@sma/db": "workspace:*",
     "@sma/domain": "workspace:*",
     "@sma/providers": "workspace:*",
     "@sma/queue": "workspace:*",
     "bullmq": "^6.3.4",
+    "drizzle-orm": "^0.44.2",
     "zod": "^4.5.4"
   },
   "devDependencies": {

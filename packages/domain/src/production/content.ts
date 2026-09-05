@@ -4,6 +4,7 @@ import {
   contentItems,
   contentVersions,
   db as defaultDb,
+  qaResults,
   researchFindings,
   type Db,
 } from "@sma/db";
@@ -61,6 +62,27 @@ export async function runContent(
     throw new Error(`No brand profile for workspace: ${item.workspaceId}`);
   }
 
+  const existingVersions = await db
+    .select()
+    .from(contentVersions)
+    .where(eq(contentVersions.contentItemId, item.id));
+  const nextVersionNumber = existingVersions.length + 1;
+
+  const [latestQa] = await db
+    .select()
+    .from(qaResults)
+    .where(eq(qaResults.contentItemId, item.id))
+    .orderBy(desc(qaResults.createdAt))
+    .limit(1);
+  const revisionFeedback =
+    latestQa?.verdict === "fail" && latestQa.judgeFeedback
+      ? latestQa.judgeFeedback
+      : null;
+
+  const revisionSection = revisionFeedback
+    ? `\n\nDies ist eine Ueberarbeitung. Feedback aus der vorherigen QA-Runde, das du unbedingt beruecksichtigen musst:\n${revisionFeedback}`
+    : "";
+
   const prompt = `Thema: "${brief.topic}"
 Format: ${item.format}
 
@@ -74,7 +96,7 @@ Brand Voice: ${brandProfile.voice}
 Brand Guidelines: ${brandProfile.guidelines}
 Zielgruppe: ${brandProfile.targetAudience}
 
-Aufgabe: Entwickle den Content fuer dieses ${item.format} (Hook, Skript, Caption, CTA, Hashtags) gemaess Schema.`;
+Aufgabe: Entwickle den Content fuer dieses ${item.format} (Hook, Skript, Caption, CTA, Hashtags) gemaess Schema.${revisionSection}`;
 
   const output = await deps.llm.generateStructured({
     schema: contentOutputSchema,
@@ -88,13 +110,14 @@ Aufgabe: Entwickle den Content fuer dieses ${item.format} (Hook, Skript, Caption
     .values({
       workspaceId: item.workspaceId,
       contentItemId: item.id,
-      versionNumber: 1,
+      versionNumber: nextVersionNumber,
       hook: output.hook,
       script: output.script,
       caption: output.caption,
       cta: output.cta,
       hashtags: output.hashtags,
       createdBy: "llm",
+      revisionFeedback,
     })
     .returning();
   if (!version) throw new Error("Failed to insert content version");

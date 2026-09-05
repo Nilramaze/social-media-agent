@@ -68,6 +68,9 @@ importers:
       '@langchain/langgraph-checkpoint-postgres':
         specifier: ^1.0.5
         version: 1.0.5(@langchain/core@1.2.9)(@langchain/langgraph-checkpoint@1.1.5(@langchain/core@1.2.9))
+      '@sma/db':
+        specifier: workspace:*
+        version: link:../../packages/db
       '@sma/domain':
         specifier: workspace:*
         version: link:../../packages/domain
@@ -80,6 +83,9 @@ importers:
       bullmq:
         specifier: ^6.3.4
         version: 6.3.4(ioredis@6.0.0(supports-color@7.2.0))(pg@8.23.0)
+      drizzle-orm:
+        specifier: ^0.44.2
+        version: 0.44.7(pg@8.23.0)(postgres@3.4.9)
       zod:
         specifier: ^4.5.4
         version: 4.5.4

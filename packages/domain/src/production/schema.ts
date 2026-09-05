@@ -17,3 +17,9 @@ export const contentOutputSchema = z.object({
   hashtags: z.array(z.string().min(1).max(50)).min(3).max(30),
 });
 export type ContentOutput = z.infer<typeof contentOutputSchema>;
+
+export const qaJudgeOutputSchema = z.object({
+  verdict: z.enum(["pass", "fail"]),
+  feedback: z.string().min(1),
+});
+export type QaJudgeOutput = z.infer<typeof qaJudgeOutputSchema>;
