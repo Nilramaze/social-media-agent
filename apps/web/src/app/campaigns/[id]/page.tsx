@@ -9,6 +9,7 @@ import { eq } from "drizzle-orm";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { STATUS_LABELS, STEP_LABELS } from "@/lib/labels";
+import { DeleteButton } from "@/components/delete-button";
 
 export const dynamic = "force-dynamic";
 
@@ -41,14 +42,27 @@ export default async function CampaignDetailPage({
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 p-8">
-      <div>
-        <h1 className="text-2xl font-semibold">{campaign.goalText}</h1>
-        <p className="text-sm text-neutral-500">
-          Status: {campaign.status} &middot; {new Date(campaign.createdAt).toLocaleString("de-DE")}
-        </p>
-        <Link href="/pipeline" className="text-sm underline text-neutral-500">
-          Live-Uebersicht aller Agenten
-        </Link>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold">{campaign.goalText}</h1>
+          <p className="text-sm text-neutral-500">
+            Status: {campaign.status} &middot; {new Date(campaign.createdAt).toLocaleString("de-DE")}
+          </p>
+          <div className="flex gap-3 text-sm">
+            <Link href="/pipeline" className="underline text-neutral-500">
+              Live-Uebersicht aller Agenten
+            </Link>
+            <Link href="/campaigns" className="underline text-neutral-500">
+              Alle Kampagnen
+            </Link>
+          </div>
+        </div>
+        <DeleteButton
+          endpoint={`/api/campaigns/${campaign.id}`}
+          confirmText="Diese Kampagne wirklich loeschen? Das entfernt alle zugehoerigen Content-Items, Versionen und Warteschlangen-Jobs unwiderruflich."
+          redirectTo="/campaigns"
+          label="Kampagne loeschen"
+        />
       </div>
 
       {campaign.status === "failed" ? (
@@ -98,9 +112,16 @@ export default async function CampaignDetailPage({
                   ) : null}
                 </div>
                 {item ? (
-                  <Link href={`/review/${item.id}`} className="underline shrink-0 ml-4">
-                    ansehen
-                  </Link>
+                  <div className="flex items-center gap-3 shrink-0 ml-4">
+                    <Link href={`/review/${item.id}`} className="underline">
+                      ansehen
+                    </Link>
+                    <DeleteButton
+                      endpoint={`/api/content-items/${item.id}`}
+                      confirmText={`Content-Item "${brief.topic}" wirklich loeschen?`}
+                      label="loeschen"
+                    />
+                  </div>
                 ) : null}
               </li>
             ))}

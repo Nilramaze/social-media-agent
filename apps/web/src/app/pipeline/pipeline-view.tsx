@@ -23,6 +23,34 @@ function elapsedSeconds(since: string | null, now: number): number | null {
   return Math.max(0, Math.round((now - new Date(since).getTime()) / 1000));
 }
 
+function DeleteItemButton({ id, topic }: { id: string; topic: string }) {
+  const [pending, setPending] = useState(false);
+
+  async function onDelete() {
+    if (!window.confirm(`Content-Item "${topic}" wirklich loeschen?`)) return;
+    setPending(true);
+    try {
+      const res = await fetch(`/api/content-items/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      // next poll cycle will drop it from the list
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
+      setPending(false);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onDelete}
+      disabled={pending}
+      className="shrink-0 rounded-md border border-red-600 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-600 hover:text-white disabled:opacity-50"
+    >
+      {pending ? "..." : "loeschen"}
+    </button>
+  );
+}
+
 export function PipelineView() {
   const [items, setItems] = useState<PipelineItem[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -86,9 +114,12 @@ export function PipelineView() {
                       {secs !== null ? ` · seit ${secs}s` : ""}
                     </p>
                   </div>
-                  <Link href={`/review/${item.id}`} className="underline shrink-0 ml-4">
-                    ansehen
-                  </Link>
+                  <div className="flex items-center gap-2 shrink-0 ml-4">
+                    <Link href={`/review/${item.id}`} className="underline">
+                      ansehen
+                    </Link>
+                    <DeleteItemButton id={item.id} topic={item.topic} />
+                  </div>
                 </li>
               );
             })}
@@ -113,9 +144,12 @@ export function PipelineView() {
                   <p className="font-medium truncate">{item.topic}</p>
                   <p className="text-neutral-500">{item.format}</p>
                 </div>
-                <Link href={`/review/${item.id}`} className="underline shrink-0 ml-4">
-                  freigeben
-                </Link>
+                <div className="flex items-center gap-2 shrink-0 ml-4">
+                  <Link href={`/review/${item.id}`} className="underline">
+                    freigeben
+                  </Link>
+                  <DeleteItemButton id={item.id} topic={item.topic} />
+                </div>
               </li>
             ))}
           </ul>
@@ -139,9 +173,12 @@ export function PipelineView() {
                   {item.qaRetryCount > 0 ? ` · ${item.qaRetryCount} QA-Retry(s)` : ""}
                 </p>
               </div>
-              <Link href={`/review/${item.id}`} className="underline shrink-0 ml-4 text-xs">
-                ansehen
-              </Link>
+              <div className="flex items-center gap-2 shrink-0 ml-4">
+                <Link href={`/review/${item.id}`} className="underline text-xs">
+                  ansehen
+                </Link>
+                <DeleteItemButton id={item.id} topic={item.topic} />
+              </div>
             </li>
           ))}
         </ul>

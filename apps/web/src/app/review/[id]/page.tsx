@@ -10,6 +10,7 @@ import {
 import { desc, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { getStorageProvider } from "@/lib/storage";
+import { DeleteButton } from "@/components/delete-button";
 import { ReviewActions } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -77,11 +78,21 @@ export default async function ReviewDetailPage({
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 p-8">
-      <div>
-        <h1 className="text-2xl font-semibold">{brief?.topic ?? "Content"}</h1>
-        <p className="text-sm text-neutral-500">
-          {item.format} &middot; Status: {item.status} &middot; QA-Retries: {item.qaRetryCount}
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold">{brief?.topic ?? "Content"}</h1>
+          <p className="text-sm text-neutral-500">
+            {item.format} &middot; Status: {item.status} &middot; QA-Retries: {item.qaRetryCount}
+          </p>
+          {item.status === "failed" && item.lastError ? (
+            <p className="text-red-600 text-sm mt-1">{item.lastError}</p>
+          ) : null}
+        </div>
+        <DeleteButton
+          endpoint={`/api/content-items/${item.id}`}
+          confirmText={`Content-Item "${brief?.topic ?? item.id}" wirklich loeschen?`}
+          redirectTo="/review"
+        />
       </div>
 
       {currentVersion ? (

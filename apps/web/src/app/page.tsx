@@ -13,6 +13,9 @@ export default function Home() {
         <Link href="/review" className="underline hover:text-neutral-800 dark:hover:text-neutral-200">
           Review-Queue
         </Link>
+        <Link href="/campaigns" className="underline hover:text-neutral-800 dark:hover:text-neutral-200">
+          Alle Kampagnen
+        </Link>
       </div>
     </main>
   );

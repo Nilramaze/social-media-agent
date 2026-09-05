@@ -13,6 +13,9 @@ importers:
       '@sma/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@sma/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
       '@sma/providers':
         specifier: workspace:*
         version: link:../../packages/providers

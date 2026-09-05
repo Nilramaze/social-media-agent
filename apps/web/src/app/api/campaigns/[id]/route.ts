@@ -1,4 +1,6 @@
-import { campaigns, contentBriefs, contentPillars, db } from "@sma/db";
+import { campaigns, contentBriefs, contentItems, contentPillars, db } from "@sma/db";
+import { deleteCampaign } from "@sma/domain";
+import { removeCampaignJobs, removeContentItemJobs } from "@sma/queue";
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
@@ -24,4 +26,28 @@ export async function GET(
     .where(eq(contentBriefs.campaignId, id));
 
   return NextResponse.json({ campaign, pillars, briefs });
+}
+
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params;
+
+  const [campaign] = await db.select().from(campaigns).where(eq(campaigns.id, id)).limit(1);
+  if (!campaign) {
+    return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
+  }
+
+  const briefs = await db.select().from(contentBriefs).where(eq(contentBriefs.campaignId, id));
+  for (const brief of briefs) {
+    const items = await db.select().from(contentItems).where(eq(contentItems.briefId, brief.id));
+    for (const item of items) {
+      await removeContentItemJobs(item.id);
+    }
+  }
+  await removeCampaignJobs(id);
+
+  const result = await deleteCampaign(id);
+  return NextResponse.json({ deleted: true, ...result });
 }

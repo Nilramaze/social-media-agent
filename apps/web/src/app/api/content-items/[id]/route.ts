@@ -7,6 +7,8 @@ import {
   qaResults,
   researchFindings,
 } from "@sma/db";
+import { deleteContentItem } from "@sma/domain";
+import { removeContentItemJobs } from "@sma/queue";
 import { desc, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
@@ -59,4 +61,21 @@ export async function GET(
     qaHistory,
     approvalHistory,
   });
+}
+
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params;
+
+  const [item] = await db.select().from(contentItems).where(eq(contentItems.id, id)).limit(1);
+  if (!item) {
+    return NextResponse.json({ error: "Content item not found" }, { status: 404 });
+  }
+
+  await removeContentItemJobs(id);
+  await deleteContentItem(id);
+
+  return NextResponse.json({ deleted: true });
 }
