@@ -9,18 +9,10 @@ import {
   db,
   workspaces,
 } from "@sma/db";
-import type { LLMProvider, StructuredCallInput } from "@sma/providers";
+import { FakeLLMProvider } from "@sma/providers";
 import { eq } from "drizzle-orm";
 import { runPlanning } from "./run-planning";
 import type { StrategistOutput } from "./schema";
-
-class FakeLLMProvider implements LLMProvider {
-  constructor(private readonly output: StrategistOutput) {}
-
-  async generateStructured<T>(_input: StructuredCallInput<T>): Promise<T> {
-    return this.output as unknown as T;
-  }
-}
 
 async function seedTestWorkspace() {
   const [workspace] = await db
@@ -67,7 +59,9 @@ test("runPlanning writes pillars and briefs and activates the campaign", async (
       ],
     };
 
-    await runPlanning(campaign.id, { llm: new FakeLLMProvider(fakeOutput) });
+    await runPlanning(campaign.id, {
+      llm: new FakeLLMProvider({ generateStructured: () => fakeOutput }),
+    });
 
     const [updatedCampaign] = await db
       .select()
