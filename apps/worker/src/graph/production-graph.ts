@@ -1,6 +1,12 @@
-import { END, START, StateGraph } from "@langchain/langgraph";
+import { END, START, StateGraph, interrupt } from "@langchain/langgraph";
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
-import { runContent, runQA, runResearch } from "@sma/domain";
+import {
+  approvalDecisionSchema,
+  recordApprovalDecision,
+  runContent,
+  runQA,
+  runResearch,
+} from "@sma/domain";
 import {
   AnthropicLLMProvider,
   TavilySearchProvider,
@@ -37,11 +43,24 @@ export function buildProductionGraph({ llm, search }: ProductionGraphDeps) {
         needsHumanReview: result.needsHumanReview,
       };
     })
+    .addNode("human_approval", async (state) => {
+      // interrupt() first: this node re-runs from the top on every resume,
+      // so nothing before it may have side effects (see project memory).
+      const resumeValue = interrupt({ contentItemId: state.contentItemId });
+      const decision = approvalDecisionSchema.parse(resumeValue);
+      await recordApprovalDecision(state.contentItemId, decision);
+      return { approvalDecision: decision.decision };
+    })
     .addEdge(START, "research")
     .addEdge("research", "content")
     .addEdge("content", "qa")
-    .addConditionalEdges("qa", (state) =>
-      state.qaVerdict === "fail" && !state.needsHumanReview ? "content" : END,
+    .addConditionalEdges("qa", (state) => {
+      if (state.qaVerdict === "pass") return "human_approval";
+      if (state.needsHumanReview) return END;
+      return "content";
+    })
+    .addConditionalEdges("human_approval", (state) =>
+      state.approvalDecision === "changes_requested" ? "content" : END,
     );
 }
 

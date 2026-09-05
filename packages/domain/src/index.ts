@@ -7,3 +7,4 @@ export * from "./production/bootstrap";
 export * from "./production/research";
 export * from "./production/content";
 export * from "./production/qa";
+export * from "./production/approval";

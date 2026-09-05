@@ -7,7 +7,10 @@ import {
   planningJobSchema,
   PRODUCTION_QUEUE_NAME,
   productionJobSchema,
+  RESUME_GRAPH_QUEUE_NAME,
+  resumeGraphJobSchema,
 } from "@sma/queue";
+import { Command } from "@langchain/langgraph";
 import { Worker } from "bullmq";
 import { compileProductionGraph } from "./graph/production-graph";
 
@@ -62,15 +65,36 @@ const productionWorker = new Worker(
   { connection: getRedisConnection() },
 );
 
+const resumeGraphWorker = new Worker(
+  RESUME_GRAPH_QUEUE_NAME,
+  async (job) => {
+    const { contentItemId, resumeValue } = resumeGraphJobSchema.parse(job.data);
+    console.log(`[worker] resuming graph for content item ${contentItemId} with decision ${resumeValue.decision}`);
+    const graph = await getProductionGraph();
+    await graph.invoke(new Command({ resume: resumeValue }), {
+      configurable: { thread_id: contentItemId },
+    });
+    console.log(`[worker] resume done for content item ${contentItemId}`);
+  },
+  { connection: getRedisConnection() },
+);
+
 planningWorker.on("failed", (job, err) => {
   console.error(`[worker] planning job ${job?.id} failed:`, err);
 });
 productionWorker.on("failed", (job, err) => {
   console.error(`[worker] production job ${job?.id} failed:`, err);
 });
+resumeGraphWorker.on("failed", (job, err) => {
+  console.error(`[worker] resume-graph job ${job?.id} failed:`, err);
+});
 
 process.on("SIGINT", async () => {
   console.log("[worker] shutting down");
-  await Promise.all([planningWorker.close(), productionWorker.close()]);
+  await Promise.all([
+    planningWorker.close(),
+    productionWorker.close(),
+    resumeGraphWorker.close(),
+  ]);
   process.exit(0);
 });

@@ -1,4 +1,5 @@
 import {
+  approvals,
   brandProfiles,
   contentBriefs,
   contentItems,
@@ -68,19 +69,36 @@ export async function runContent(
     .where(eq(contentVersions.contentItemId, item.id));
   const nextVersionNumber = existingVersions.length + 1;
 
-  const [latestQa] = await db
+  const [latestQaFail] = await db
     .select()
     .from(qaResults)
     .where(eq(qaResults.contentItemId, item.id))
     .orderBy(desc(qaResults.createdAt))
     .limit(1);
-  const revisionFeedback =
-    latestQa?.verdict === "fail" && latestQa.judgeFeedback
-      ? latestQa.judgeFeedback
+  const [latestChangeRequest] = await db
+    .select()
+    .from(approvals)
+    .where(eq(approvals.contentItemId, item.id))
+    .orderBy(desc(approvals.decidedAt))
+    .limit(1);
+
+  const qaFeedbackAt =
+    latestQaFail?.verdict === "fail" ? latestQaFail.createdAt : null;
+  const changeRequestAt =
+    latestChangeRequest?.decision === "changes_requested" &&
+    (latestChangeRequest.target === "content" || !latestChangeRequest.target)
+      ? latestChangeRequest.decidedAt
       : null;
 
+  let revisionFeedback: string | null = null;
+  if (changeRequestAt && (!qaFeedbackAt || changeRequestAt > qaFeedbackAt)) {
+    revisionFeedback = latestChangeRequest?.feedback ?? null;
+  } else if (qaFeedbackAt) {
+    revisionFeedback = latestQaFail?.judgeFeedback ?? null;
+  }
+
   const revisionSection = revisionFeedback
-    ? `\n\nDies ist eine Ueberarbeitung. Feedback aus der vorherigen QA-Runde, das du unbedingt beruecksichtigen musst:\n${revisionFeedback}`
+    ? `\n\nDies ist eine Ueberarbeitung. Feedback, das du unbedingt beruecksichtigen musst:\n${revisionFeedback}`
     : "";
 
   const prompt = `Thema: "${brief.topic}"
