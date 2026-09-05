@@ -1,7 +1,7 @@
 import { boolean, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import { createdAtColumn, idColumn, workspaceIdColumn } from "./common";
 
-export const campaignStatusValues = ["draft", "active", "completed"] as const;
+export const campaignStatusValues = ["draft", "active", "completed", "failed"] as const;
 
 export const campaigns = pgTable("campaigns", {
   id: idColumn(),
@@ -12,6 +12,7 @@ export const campaigns = pgTable("campaigns", {
   status: text("status", { enum: campaignStatusValues })
     .notNull()
     .default("draft"),
+  planningError: text("planning_error"),
   createdAt: createdAtColumn(),
 });
 

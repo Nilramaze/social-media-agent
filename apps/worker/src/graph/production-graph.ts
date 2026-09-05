@@ -2,6 +2,7 @@ import { END, START, StateGraph, interrupt } from "@langchain/langgraph";
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import {
   approvalDecisionSchema,
+  markContentItemStep,
   recordApprovalDecision,
   runContent,
   runCreative,
@@ -49,14 +50,17 @@ export function buildProductionGraph({
 }: ProductionGraphDeps) {
   return new StateGraph(ProductionState)
     .addNode("research", async (state) => {
+      await markContentItemStep(state.contentItemId, "research");
       await runResearch(state.contentItemId, { llm, search });
       return {};
     })
     .addNode("content", async (state) => {
+      await markContentItemStep(state.contentItemId, "content");
       await runContent(state.contentItemId, { llm });
       return {};
     })
     .addNode("voice", async (state) => {
+      await markContentItemStep(state.contentItemId, "voice");
       const result = await runVoice(state.contentItemId, { voice, storage });
       return {
         audioStorageKey: result.audioStorageKey,
@@ -65,6 +69,7 @@ export function buildProductionGraph({
       };
     })
     .addNode("creative", async (state) => {
+      await markContentItemStep(state.contentItemId, "creative");
       if (!state.audioStorageKey || !state.captions || state.voiceDurationSeconds === undefined) {
         throw new Error("creative node reached without voice output in state");
       }
@@ -80,7 +85,13 @@ export function buildProductionGraph({
       return {};
     })
     .addNode("qa", async (state) => {
+      await markContentItemStep(state.contentItemId, "qa");
       const result = await runQA(state.contentItemId, { llm });
+      if (result.verdict === "pass" || result.needsHumanReview) {
+        // About to pause for human input or stop entirely - no agent is
+        // actively working on this item right now.
+        await markContentItemStep(state.contentItemId, null);
+      }
       return {
         qaVerdict: result.verdict,
         qaCategory: result.category,

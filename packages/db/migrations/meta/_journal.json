@@ -8,6 +8,20 @@
       "when": 1788608612644,
       "tag": "0000_lethal_korath",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1788636785610,
+      "tag": "0001_clumsy_young_avengers",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788641316935,
+      "tag": "0002_large_crusher_hogan",
+      "breakpoints": true
     }
   ]
 }

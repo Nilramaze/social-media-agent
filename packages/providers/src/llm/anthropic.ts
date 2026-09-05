@@ -29,8 +29,9 @@ function toAnthropicTool(
 export class AnthropicLLMProvider implements LLMProvider {
   private readonly client: Anthropic;
 
-  constructor(apiKey?: string) {
-    this.client = apiKey ? new Anthropic({ apiKey }) : new Anthropic();
+  /** `client` is for tests only; production passes an api key or nothing. */
+  constructor(apiKey?: string, client?: Anthropic) {
+    this.client = client ?? (apiKey ? new Anthropic({ apiKey }) : new Anthropic());
   }
 
   async generateStructured<T>({
@@ -38,7 +39,7 @@ export class AnthropicLLMProvider implements LLMProvider {
     system,
     prompt,
     model,
-    maxTokens = 8000,
+    maxTokens = 16000,
     maxRetries = 2,
   }: StructuredCallInput<T>): Promise<T> {
     const messages: Anthropic.MessageParam[] = [
@@ -49,17 +50,30 @@ export class AnthropicLLMProvider implements LLMProvider {
       if (repairNote) {
         messages.push({
           role: "user",
-          content: `Deine vorherige Antwort entsprach nicht dem geforderten Schema.\nFehler: ${repairNote}\nBitte antworte erneut, ausschliesslich mit validem JSON gemaess Schema.`,
+          content: `Deine vorherige Antwort entsprach nicht dem geforderten Schema.\nFehler: ${repairNote}\nBitte antworte erneut, ausschliesslich mit validem JSON gemaess Schema. Halte dich strikt an alle Laengenbegrenzungen.`,
         });
       }
 
-      const response = await this.client.messages.parse({
-        model,
-        max_tokens: maxTokens,
-        ...(system !== undefined ? { system } : {}),
-        messages,
-        output_config: { format: zodOutputFormat(schema) },
-      });
+      // The SDK's zodOutputFormat parser THROWS on malformed/truncated JSON
+      // and on schema violations - it does not return parsed_output: null.
+      // Both are exactly what the repair loop exists for, so they must be
+      // caught here and fed back as a retryable error instead of escaping.
+      let response: Awaited<ReturnType<typeof this.client.messages.parse>>;
+      try {
+        response = await this.client.messages.parse({
+          model,
+          max_tokens: maxTokens,
+          ...(system !== undefined ? { system } : {}),
+          messages,
+          output_config: { format: zodOutputFormat(schema) },
+        });
+      } catch (err) {
+        if (err instanceof Anthropic.APIError) throw err; // transport/auth: not repairable
+        return {
+          parsedOutput: null,
+          errorSummary: err instanceof Error ? err.message.slice(0, 800) : String(err),
+        };
+      }
 
       if (response.parsed_output !== null) {
         return { parsedOutput: response.parsed_output };
@@ -67,7 +81,8 @@ export class AnthropicLLMProvider implements LLMProvider {
 
       messages.push({ role: "assistant", content: response.content });
       const textBlock = response.content.find(
-        (block): block is Anthropic.TextBlock => block.type === "text",
+        (block: Anthropic.ContentBlock): block is Anthropic.TextBlock =>
+          block.type === "text",
       );
       return {
         parsedOutput: null,

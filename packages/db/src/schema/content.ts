@@ -1,4 +1,4 @@
-import { integer, jsonb, pgTable, text } from "drizzle-orm/pg-core";
+import { integer, jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import { contentBriefs } from "./campaign";
 import { createdAtColumn, idColumn, workspaceIdColumn } from "./common";
 
@@ -17,6 +17,19 @@ export const contentItemStatusValues = [
   "failed",
 ] as const;
 
+// Which graph node is actively working right now - finer-grained and more
+// transient than `status` (e.g. `status: "in_qa"` covers voice, creative
+// AND qa; `currentStep` disambiguates which of those is running this
+// instant). Null once no agent is actively working (waiting for human
+// review, terminal states, or between queue pickups).
+export const contentItemStepValues = [
+  "research",
+  "content",
+  "voice",
+  "creative",
+  "qa",
+] as const;
+
 export const contentItems = pgTable("content_items", {
   id: idColumn(),
   workspaceId: workspaceIdColumn(),
@@ -27,6 +40,9 @@ export const contentItems = pgTable("content_items", {
   status: text("status", { enum: contentItemStatusValues })
     .notNull()
     .default("researching"),
+  currentStep: text("current_step", { enum: contentItemStepValues }),
+  currentStepStartedAt: timestamp("current_step_started_at", { withTimezone: true }),
+  lastError: text("last_error"),
   currentContentVersionId: text("current_content_version_id"),
   currentCreativeVersionId: text("current_creative_version_id"),
   qaRetryCount: integer("qa_retry_count").notNull().default(0),

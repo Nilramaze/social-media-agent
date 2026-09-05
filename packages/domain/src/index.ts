@@ -10,6 +10,7 @@ export * from "./production/voice";
 export * from "./production/creative";
 export * from "./production/qa";
 export * from "./production/approval";
+export * from "./production/step";
 export * from "./publish/run-publish";
 export * from "./analytics/schema";
 export * from "./analytics/collect";

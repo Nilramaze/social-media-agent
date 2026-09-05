@@ -17,7 +17,8 @@ import { contentOutputSchema } from "./schema";
 const CONTENT_SYSTEM_PROMPT = `Du bist der Content Agent einer Social-Media-Marketing-Pipeline fuer eine kleine KI-/Web-Agentur.
 Du entwickelst Reel-Ideen, Hooks, Skripte, Captions und CTAs.
 Stil: direkt, verstaendlich, technisch kompetent, fuer Inhaber:innen kleiner Unternehmen nachvollziehbar.
-Keine Buzzword-Flut, keine unseriösen KI-Versprechen. Konkrete Probleme und Loesungen statt Hype.`;
+Keine Buzzword-Flut, keine unseriösen KI-Versprechen. Konkrete Probleme und Loesungen statt Hype.
+Das Skript ist der gesprochene Text fuer ein 30-60 Sekunden Reel: ca. 100-150 Woerter, hoechstens 2000 Zeichen. Keine Regieanweisungen, keine Szenenbeschreibungen - nur der Text, der vorgelesen wird.`;
 
 export interface RunContentDeps {
   llm: LLMProvider;

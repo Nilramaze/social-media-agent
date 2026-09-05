@@ -1,4 +1,6 @@
 import { Command } from "@langchain/langgraph";
+import { campaigns, contentItems, db } from "@sma/db";
+import { eq } from "drizzle-orm";
 import {
   createContentItemsForCampaign,
   runAnalyticsCycle,
@@ -62,14 +64,23 @@ const planningWorker = new Worker(
   async (job) => {
     const { campaignId } = planningJobSchema.parse(job.data);
     console.log(`[worker] running planning for campaign ${campaignId}`);
-    await runPlanning(campaignId, { llm });
+    try {
+      await runPlanning(campaignId, { llm });
 
-    const contentItemIds = await createContentItemsForCampaign(campaignId);
-    console.log(
-      `[worker] planning done for campaign ${campaignId}, created ${contentItemIds.length} content item(s)`,
-    );
-    for (const contentItemId of contentItemIds) {
-      await enqueueProductionRun({ contentItemId });
+      const contentItemIds = await createContentItemsForCampaign(campaignId);
+      console.log(
+        `[worker] planning done for campaign ${campaignId}, created ${contentItemIds.length} content item(s)`,
+      );
+      for (const contentItemId of contentItemIds) {
+        await enqueueProductionRun({ contentItemId });
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      await db
+        .update(campaigns)
+        .set({ status: "failed", planningError: message })
+        .where(eq(campaigns.id, campaignId));
+      throw err;
     }
   },
   { connection: getRedisConnection() },
@@ -80,12 +91,21 @@ const productionWorker = new Worker(
   async (job) => {
     const { contentItemId } = productionJobSchema.parse(job.data);
     console.log(`[worker] running production graph for content item ${contentItemId}`);
-    const graph = await getProductionGraph();
-    await graph.invoke(
-      { contentItemId },
-      { configurable: { thread_id: contentItemId } },
-    );
-    console.log(`[worker] production graph done for content item ${contentItemId}`);
+    try {
+      const graph = await getProductionGraph();
+      await graph.invoke(
+        { contentItemId },
+        { configurable: { thread_id: contentItemId } },
+      );
+      console.log(`[worker] production graph done for content item ${contentItemId}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      await db
+        .update(contentItems)
+        .set({ status: "failed", currentStep: null, lastError: message })
+        .where(eq(contentItems.id, contentItemId));
+      throw err;
+    }
   },
   { connection: getRedisConnection() },
 );
@@ -95,11 +115,20 @@ const resumeGraphWorker = new Worker(
   async (job) => {
     const { contentItemId, resumeValue } = resumeGraphJobSchema.parse(job.data);
     console.log(`[worker] resuming graph for content item ${contentItemId} with decision ${resumeValue.decision}`);
-    const graph = await getProductionGraph();
-    await graph.invoke(new Command({ resume: resumeValue }), {
-      configurable: { thread_id: contentItemId },
-    });
-    console.log(`[worker] resume done for content item ${contentItemId}`);
+    try {
+      const graph = await getProductionGraph();
+      await graph.invoke(new Command({ resume: resumeValue }), {
+        configurable: { thread_id: contentItemId },
+      });
+      console.log(`[worker] resume done for content item ${contentItemId}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      await db
+        .update(contentItems)
+        .set({ status: "failed", currentStep: null, lastError: message })
+        .where(eq(contentItems.id, contentItemId));
+      throw err;
+    }
   },
   { connection: getRedisConnection() },
 );
