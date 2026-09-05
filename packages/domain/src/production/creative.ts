@@ -4,26 +4,20 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   contentItems,
-  contentVersions,
   creativeVersions,
   db as defaultDb,
   type Db,
 } from "@sma/db";
 import {
-  creativeBriefSchema,
   DEFAULT_FPS,
   DEFAULT_HEIGHT,
   DEFAULT_WIDTH,
   renderReelVideo,
   type ReelProps,
 } from "@sma/creative";
-import type { LLMProvider, StorageProvider } from "@sma/providers";
+import type { StorageProvider } from "@sma/providers";
 import { eq } from "drizzle-orm";
-import { NODE_MODELS } from "../model-config";
-
-const CREATIVE_SYSTEM_PROMPT = `Du bist der Creative Agent einer Social-Media-Marketing-Pipeline fuer eine kleine KI-/Web-Agentur.
-Du zerlegst ein bereits geschriebenes Reel-Skript in 3-10 kurze Bildschirmtext-Szenen fuer ein vertikales Video (Text-auf-Hintergrund-Stil).
-Jede Szene: ein kurzer, gut lesbarer Text (max. ca. 15 Woerter), eine Dauer in Sekunden (1-15) und eine Hintergrundfarbe als Hex-Code, die farblich zur Aussage passt (z.B. dunkel/ernst fuer das Problem, kraeftig/positiv fuer die Loesung).`;
+import type { Caption } from "./voice";
 
 export interface VideoRenderer {
   render(props: ReelProps, outputPath: string): Promise<void>;
@@ -31,15 +25,23 @@ export interface VideoRenderer {
 
 const defaultRenderer: VideoRenderer = { render: renderReelVideo };
 
+export interface RunCreativeInput {
+  audioStorageKey: string;
+  captions: Caption[];
+  durationSeconds: number;
+}
+
 export interface RunCreativeDeps {
-  llm: LLMProvider;
   storage: StorageProvider;
   db?: Db;
   renderer?: VideoRenderer;
+  /** How long the signed audio URL handed to the renderer stays valid. */
+  audioUrlTtlSeconds?: number;
 }
 
 export async function runCreative(
   contentItemId: string,
+  input: RunCreativeInput,
   deps: RunCreativeDeps,
 ): Promise<{ creativeVersionId: string }> {
   const db = deps.db ?? defaultDb;
@@ -51,34 +53,16 @@ export async function runCreative(
     .where(eq(contentItems.id, contentItemId))
     .limit(1);
   if (!item) throw new Error(`Content item not found: ${contentItemId}`);
-  if (!item.currentContentVersionId) {
-    throw new Error(`Content item has no current content version: ${contentItemId}`);
-  }
 
-  const [version] = await db
-    .select()
-    .from(contentVersions)
-    .where(eq(contentVersions.id, item.currentContentVersionId))
-    .limit(1);
-  if (!version) {
-    throw new Error(`Content version not found: ${item.currentContentVersionId}`);
-  }
-
-  const prompt = `Hook: ${version.hook}
-Skript: ${version.script}
-CTA: ${version.cta}
-
-Zerlege diesen Content in Bildschirmtext-Szenen gemaess Schema.`;
-
-  const brief = await deps.llm.generateStructured({
-    schema: creativeBriefSchema,
-    system: CREATIVE_SYSTEM_PROMPT,
-    prompt,
-    model: NODE_MODELS.creative,
-  });
+  const audioUrl = await deps.storage.getSignedUrl(
+    input.audioStorageKey,
+    deps.audioUrlTtlSeconds ?? 600,
+  );
 
   const reelProps: ReelProps = {
-    scenes: brief.scenes,
+    audioUrl,
+    captions: input.captions,
+    durationSeconds: input.durationSeconds,
     fps: DEFAULT_FPS,
     width: DEFAULT_WIDTH,
     height: DEFAULT_HEIGHT,
@@ -89,8 +73,8 @@ Zerlege diesen Content in Bildschirmtext-Szenen gemaess Schema.`;
     await renderer.render(reelProps, tempPath);
     const videoBuffer = await readFile(tempPath);
 
-    const storageKey = `creative/${item.id}/${randomUUID()}.mp4`;
-    await deps.storage.upload(videoBuffer, storageKey, "video/mp4");
+    const videoStorageKey = `creative/${item.id}/${randomUUID()}.mp4`;
+    await deps.storage.upload(videoBuffer, videoStorageKey, "video/mp4");
 
     const [creativeVersion] = await db
       .insert(creativeVersions)
@@ -98,11 +82,12 @@ Zerlege diesen Content in Bildschirmtext-Szenen gemaess Schema.`;
         workspaceId: item.workspaceId,
         contentItemId: item.id,
         versionNumber: 1,
-        remotionProps: reelProps,
-        // Stored as a storage key, not a URL: the bucket is private, so
-        // consumers (dashboard, publish step) must resolve this via
-        // StorageProvider.getSignedUrl() rather than fetching it directly.
-        assetRefs: [storageKey],
+        remotionProps: { ...reelProps, audioUrl: undefined },
+        // Stored as storage keys, not URLs: the bucket is private, so
+        // consumers (dashboard, publish step) must resolve these via
+        // StorageProvider.getSignedUrl() rather than fetching directly.
+        assetRefs: [videoStorageKey, input.audioStorageKey],
+        subtitleData: input.captions,
       })
       .returning();
     if (!creativeVersion) throw new Error("Failed to insert creative version");

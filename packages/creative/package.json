@@ -13,8 +13,7 @@
     "@remotion/renderer": "^4.0.521",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "remotion": "^4.0.521",
-    "zod": "^4.5.4"
+    "remotion": "^4.0.521"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",

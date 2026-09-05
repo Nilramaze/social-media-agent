@@ -8,5 +8,8 @@ export * from "./publish/types";
 export * from "./publish/mock";
 export * from "./analytics/types";
 export * from "./analytics/mock";
+export * from "./voice/types";
+export * from "./voice/elevenlabs";
 export * from "./testing/fake-llm";
 export * from "./testing/fake-storage";
+export * from "./testing/fake-voice";

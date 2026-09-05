@@ -6,9 +6,8 @@ export const REEL_COMPOSITION_ID = "Reel";
 
 function calculateMetadata({ props }: { props: ReelProps }) {
   const fps = props.fps ?? DEFAULT_FPS;
-  const totalSeconds = props.scenes.reduce((sum, s) => sum + s.durationSeconds, 0);
   return {
-    durationInFrames: Math.max(1, Math.round(totalSeconds * fps)),
+    durationInFrames: Math.max(1, Math.round(props.durationSeconds * fps)),
     fps,
     width: props.width ?? DEFAULT_WIDTH,
     height: props.height ?? DEFAULT_HEIGHT,
@@ -16,7 +15,9 @@ function calculateMetadata({ props }: { props: ReelProps }) {
 }
 
 const defaultProps: ReelProps = {
-  scenes: [{ text: "...", durationSeconds: 2, backgroundColor: "#111111" }],
+  audioUrl: "",
+  captions: [{ text: "...", startSeconds: 0, endSeconds: 2 }],
+  durationSeconds: 2,
   fps: DEFAULT_FPS,
   width: DEFAULT_WIDTH,
   height: DEFAULT_HEIGHT,

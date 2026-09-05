@@ -1,22 +1,25 @@
-import { AbsoluteFill, Sequence, useVideoConfig } from "remotion";
-import type { ReelProps } from "./schema";
+import { AbsoluteFill, Audio, Sequence, useVideoConfig } from "remotion";
+import { BACKGROUND_COLORS, type ReelProps } from "./schema";
 
-export function ReelComposition({ scenes }: ReelProps) {
+export function ReelComposition({ audioUrl, captions }: ReelProps) {
   const { fps } = useVideoConfig();
-  let startFrame = 0;
 
   return (
-    <AbsoluteFill>
-      {scenes.map((scene, i) => {
-        const durationInFrames = Math.round(scene.durationSeconds * fps);
-        const from = startFrame;
-        startFrame += durationInFrames;
+    <AbsoluteFill style={{ backgroundColor: BACKGROUND_COLORS[0] }}>
+      <Audio src={audioUrl} />
+      {captions.map((caption, i) => {
+        const from = Math.round(caption.startSeconds * fps);
+        const durationInFrames = Math.max(
+          1,
+          Math.round((caption.endSeconds - caption.startSeconds) * fps),
+        );
+        const backgroundColor = BACKGROUND_COLORS[i % BACKGROUND_COLORS.length];
 
         return (
           <Sequence key={i} from={from} durationInFrames={durationInFrames}>
             <AbsoluteFill
               style={{
-                backgroundColor: scene.backgroundColor,
+                backgroundColor,
                 alignItems: "center",
                 justifyContent: "center",
                 padding: 80,
@@ -25,14 +28,14 @@ export function ReelComposition({ scenes }: ReelProps) {
               <div
                 style={{
                   color: "white",
-                  fontSize: 64,
+                  fontSize: 72,
                   fontWeight: 700,
                   textAlign: "center",
                   fontFamily: "Arial, Helvetica, sans-serif",
-                  lineHeight: 1.25,
+                  lineHeight: 1.2,
                 }}
               >
-                {scene.text}
+                {caption.text}
               </div>
             </AbsoluteFill>
           </Sequence>

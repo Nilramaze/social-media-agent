@@ -15,19 +15,15 @@ import {
   researchFindings,
   workspaces,
 } from "@sma/db";
-import { creativeBriefSchema } from "@sma/creative";
 import { contentOutputSchema, FakeVideoRenderer, qaJudgeOutputSchema } from "@sma/domain";
-import { FakeLLMProvider, FakeStorageProvider, type SearchProvider } from "@sma/providers";
+import {
+  FakeLLMProvider,
+  FakeStorageProvider,
+  FakeVoiceProvider,
+  type SearchProvider,
+} from "@sma/providers";
 import { eq } from "drizzle-orm";
 import { buildProductionGraph } from "./production-graph";
-
-const FAKE_CREATIVE_BRIEF = {
-  scenes: [
-    { text: "Szene 1", durationSeconds: 2, backgroundColor: "#111111" },
-    { text: "Szene 2", durationSeconds: 2, backgroundColor: "#1e3a8a" },
-    { text: "Szene 3", durationSeconds: 2, backgroundColor: "#065f46" },
-  ],
-};
 
 function getInterrupt(result: unknown): unknown {
   return (result as { __interrupt__?: unknown }).__interrupt__;
@@ -91,9 +87,6 @@ test("production graph loops back to content on QA fail, then finishes ready_for
             hashtags: ["#a", "#b", "#c"],
           };
         }
-        if (input.schema === creativeBriefSchema) {
-          return FAKE_CREATIVE_BRIEF;
-        }
         if (input.schema === qaJudgeOutputSchema) {
           qaCallCount++;
           return qaCallCount === 1
@@ -108,6 +101,7 @@ test("production graph loops back to content on QA fail, then finishes ready_for
       llm,
       search: new FakeSearchProvider(),
       storage: new FakeStorageProvider(),
+      voice: new FakeVoiceProvider(),
       renderer: new FakeVideoRenderer(),
     }).compile({
       checkpointer: new MemorySaver(),
@@ -174,9 +168,6 @@ test("human approval gate: interrupts on QA pass, loops on changes_requested, en
             hashtags: ["#a", "#b", "#c"],
           };
         }
-        if (input.schema === creativeBriefSchema) {
-          return FAKE_CREATIVE_BRIEF;
-        }
         if (input.schema === qaJudgeOutputSchema) {
           return { verdict: "pass", feedback: "Passt." };
         }
@@ -188,6 +179,7 @@ test("human approval gate: interrupts on QA pass, loops on changes_requested, en
       llm,
       search: new FakeSearchProvider(),
       storage: new FakeStorageProvider(),
+      voice: new FakeVoiceProvider(),
       renderer: new FakeVideoRenderer(),
     }).compile({
       checkpointer: new MemorySaver(),
