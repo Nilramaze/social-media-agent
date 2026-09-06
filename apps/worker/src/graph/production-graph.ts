@@ -2,20 +2,25 @@ import { END, START, StateGraph, interrupt } from "@langchain/langgraph";
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import {
   approvalDecisionSchema,
+  getContentItemFormat,
   markContentItemStep,
   recordApprovalDecision,
   runContent,
   runCreative,
+  runCreativeStatic,
   runQA,
   runResearch,
   runVoice,
+  type StaticSlideRenderer,
   type VideoRenderer,
 } from "@sma/domain";
 import {
   AnthropicLLMProvider,
   ElevenLabsVoiceProvider,
+  OpenAIImageProvider,
   S3StorageProvider,
   TavilySearchProvider,
+  type ImageProvider,
   type LLMProvider,
   type SearchProvider,
   type StorageProvider,
@@ -35,7 +40,9 @@ export interface ProductionGraphDeps {
   search: SearchProvider;
   storage: StorageProvider;
   voice: VoiceProvider;
+  image: ImageProvider;
   renderer?: VideoRenderer;
+  staticRenderer?: StaticSlideRenderer;
   /** Defaults to the real publish queue; override in tests to avoid touching Redis. */
   onApproved?: (contentItemId: string) => Promise<void>;
 }
@@ -45,9 +52,15 @@ export function buildProductionGraph({
   search,
   storage,
   voice,
+  image,
   renderer,
+  staticRenderer,
   onApproved = (contentItemId) => enqueuePublish({ contentItemId }),
 }: ProductionGraphDeps) {
+  async function resolveCreativeNode(contentItemId: string): Promise<"creative" | "creative_static"> {
+    const format = await getContentItemFormat(contentItemId);
+    return format === "reel" ? "creative" : "creative_static";
+  }
   return new StateGraph(ProductionState)
     .addNode("research", async (state) => {
       await markContentItemStep(state.contentItemId, "research");
@@ -80,7 +93,20 @@ export function buildProductionGraph({
           captions: state.captions,
           durationSeconds: state.voiceDurationSeconds,
         },
-        { storage, ...(renderer !== undefined ? { renderer } : {}) },
+        { llm, image, storage, ...(renderer !== undefined ? { renderer } : {}) },
+      );
+      return {};
+    })
+    .addNode("creative_static", async (state) => {
+      await markContentItemStep(state.contentItemId, "creative");
+      const format = await getContentItemFormat(state.contentItemId);
+      if (format === "reel") {
+        throw new Error("creative_static node reached for a reel-format content item");
+      }
+      await runCreativeStatic(
+        state.contentItemId,
+        { format },
+        { llm, image, storage, ...(staticRenderer !== undefined ? { renderer: staticRenderer } : {}) },
       );
       return {};
     })
@@ -112,21 +138,30 @@ export function buildProductionGraph({
     })
     .addEdge(START, "research")
     .addEdge("research", "content")
-    .addEdge("content", "voice")
+    .addConditionalEdges("content", async (state) => {
+      const format = await getContentItemFormat(state.contentItemId);
+      // Reels need synthesized narration before the background visuals can
+      // be timed against it; carousel/post are static images with no audio.
+      return format === "reel" ? "voice" : "creative_static";
+    })
     .addEdge("voice", "creative")
     .addEdge("creative", "qa")
-    .addConditionalEdges("qa", (state) => {
+    .addEdge("creative_static", "qa")
+    .addConditionalEdges("qa", async (state) => {
       if (state.qaVerdict === "pass") return "human_approval";
       if (state.needsHumanReview) return END;
       // A visual-only fail can re-render from the already-synthesized
-      // voice output in state; a script fail needs a fresh script, which
-      // cascades through voice -> creative again via the fixed edges above.
-      return state.qaCategory === "visual" ? "creative" : "content";
+      // voice output in state (reel) or straight from the content version
+      // (carousel/post); a script fail needs a fresh script, which
+      // cascades back through the content -> voice/creative_static edges.
+      return state.qaCategory === "visual" ? resolveCreativeNode(state.contentItemId) : "content";
     })
-    .addConditionalEdges("human_approval", (state) => {
+    .addConditionalEdges("human_approval", async (state) => {
       if (state.approvalDecision === "approved") return "schedule_publish";
       if (state.approvalDecision === "changes_requested") {
-        return state.approvalTarget === "creative" ? "creative" : "content";
+        return state.approvalTarget === "creative"
+          ? resolveCreativeNode(state.contentItemId)
+          : "content";
       }
       return END; // rejected
     })
@@ -140,6 +175,7 @@ export async function compileProductionGraph(databaseUrl: string) {
     requireEnv("ELEVENLABS_API_KEY"),
     requireEnv("ELEVENLABS_VOICE_ID"),
   );
+  const image = new OpenAIImageProvider(requireEnv("OPENAI_API_KEY"));
   const storage = new S3StorageProvider({
     endpoint: requireEnv("S3_ENDPOINT"),
     region: process.env.S3_REGION ?? "us-east-1",
@@ -150,5 +186,5 @@ export async function compileProductionGraph(databaseUrl: string) {
   });
   const checkpointer = PostgresSaver.fromConnString(databaseUrl);
   await checkpointer.setup();
-  return buildProductionGraph({ llm, search, storage, voice }).compile({ checkpointer });
+  return buildProductionGraph({ llm, search, storage, voice, image }).compile({ checkpointer });
 }

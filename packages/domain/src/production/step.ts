@@ -14,3 +14,17 @@ export async function markContentItemStep(
     .set({ currentStep: step, currentStepStartedAt: step ? new Date() : null })
     .where(eq(contentItems.id, contentItemId));
 }
+
+export async function getContentItemFormat(
+  contentItemId: string,
+  deps: { db?: Db } = {},
+): Promise<"reel" | "carousel" | "post"> {
+  const db = deps.db ?? defaultDb;
+  const [item] = await db
+    .select({ format: contentItems.format })
+    .from(contentItems)
+    .where(eq(contentItems.id, contentItemId))
+    .limit(1);
+  if (!item) throw new Error(`Content item not found: ${contentItemId}`);
+  return item.format;
+}

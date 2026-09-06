@@ -1,41 +1,58 @@
-import { AbsoluteFill, Audio, Sequence, useVideoConfig } from "remotion";
-import { BACKGROUND_COLORS, type ReelProps } from "./schema";
+import { AbsoluteFill, Audio, Img, Sequence, useVideoConfig } from "remotion";
+import type { ReelProps } from "./schema";
 
-export function ReelComposition({ audioUrl, captions }: ReelProps) {
+export function ReelComposition({ audioUrl, captions, scenes }: ReelProps) {
   const { fps } = useVideoConfig();
 
   return (
-    <AbsoluteFill style={{ backgroundColor: BACKGROUND_COLORS[0] }}>
+    <AbsoluteFill style={{ backgroundColor: "#111111" }}>
       <Audio src={audioUrl} />
+
+      {scenes.map((scene, i) => {
+        const from = Math.round(scene.startSeconds * fps);
+        const durationInFrames = Math.max(1, Math.round((scene.endSeconds - scene.startSeconds) * fps));
+        return (
+          <Sequence key={i} from={from} durationInFrames={durationInFrames}>
+            <AbsoluteFill>
+              <Img src={scene.imageUrl} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            </AbsoluteFill>
+          </Sequence>
+        );
+      })}
+
       {captions.map((caption, i) => {
         const from = Math.round(caption.startSeconds * fps);
-        const durationInFrames = Math.max(
-          1,
-          Math.round((caption.endSeconds - caption.startSeconds) * fps),
-        );
-        const backgroundColor = BACKGROUND_COLORS[i % BACKGROUND_COLORS.length];
+        const durationInFrames = Math.max(1, Math.round((caption.endSeconds - caption.startSeconds) * fps));
 
         return (
           <Sequence key={i} from={from} durationInFrames={durationInFrames}>
             <AbsoluteFill
               style={{
-                backgroundColor,
                 alignItems: "center",
-                justifyContent: "center",
-                padding: 80,
+                justifyContent: "flex-end",
+                padding: 60,
+                paddingBottom: 160,
               }}
             >
               <div
                 style={{
-                  color: "white",
-                  fontSize: 72,
-                  fontWeight: 700,
-                  textAlign: "center",
-                  fontFamily: "Arial, Helvetica, sans-serif",
-                  lineHeight: 1.2,
+                  backgroundColor: "rgba(0,0,0,0.6)",
+                  padding: "20px 28px",
+                  borderRadius: 16,
                 }}
               >
-                {caption.text}
+                <span
+                  style={{
+                    color: "white",
+                    fontSize: 60,
+                    fontWeight: 700,
+                    textAlign: "center",
+                    fontFamily: "Arial, Helvetica, sans-serif",
+                    lineHeight: 1.2,
+                  }}
+                >
+                  {caption.text}
+                </span>
               </div>
             </AbsoluteFill>
           </Sequence>

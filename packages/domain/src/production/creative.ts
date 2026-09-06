@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   contentItems,
+  contentVersions,
   creativeVersions,
   db as defaultDb,
   type Db,
@@ -14,9 +15,12 @@ import {
   DEFAULT_WIDTH,
   renderReelVideo,
   type ReelProps,
+  type Scene,
 } from "@sma/creative";
-import type { StorageProvider } from "@sma/providers";
+import type { ImageProvider, LLMProvider, StorageProvider } from "@sma/providers";
 import { eq } from "drizzle-orm";
+import { NODE_MODELS } from "../model-config";
+import { reelVisualBriefSchema } from "./schema";
 import type { Caption } from "./voice";
 
 export interface VideoRenderer {
@@ -25,6 +29,11 @@ export interface VideoRenderer {
 
 const defaultRenderer: VideoRenderer = { render: renderReelVideo };
 
+const VISUAL_BRIEF_SYSTEM_PROMPT = `Du bist der Visual Director einer Social-Media-Marketing-Pipeline fuer eine kleine KI-/Web-Agentur.
+Du zerlegst ein Reel-Skript in 3-5 visuelle Szenen fuer den Bildhintergrund des Videos.
+Jede Szene braucht einen konkreten, bildhaften Prompt fuer eine Text-zu-Bild-KI (auf Englisch, fotorealistisch oder sauberes flaches Illustrations-Design, KEIN Text/keine Buchstaben im Bild).
+Die Szenen sollen die Erzaehlung visuell begleiten: z.B. erst das Problem zeigen (z.B. ein volles E-Mail-Postfach, gestresste Person am Schreibtisch), dann die Loesung/das Ergebnis (z.B. ein aufgeraeumtes Dashboard mit erledigten Aufgaben).`;
+
 export interface RunCreativeInput {
   audioStorageKey: string;
   captions: Caption[];
@@ -32,11 +41,13 @@ export interface RunCreativeInput {
 }
 
 export interface RunCreativeDeps {
+  llm: LLMProvider;
+  image: ImageProvider;
   storage: StorageProvider;
   db?: Db;
   renderer?: VideoRenderer;
-  /** How long the signed audio URL handed to the renderer stays valid. */
-  audioUrlTtlSeconds?: number;
+  /** How long the signed audio/image URLs handed to the renderer stay valid. */
+  urlTtlSeconds?: number;
 }
 
 export async function runCreative(
@@ -46,6 +57,7 @@ export async function runCreative(
 ): Promise<{ creativeVersionId: string }> {
   const db = deps.db ?? defaultDb;
   const renderer = deps.renderer ?? defaultRenderer;
+  const urlTtlSeconds = deps.urlTtlSeconds ?? 600;
 
   const [item] = await db
     .select()
@@ -53,15 +65,50 @@ export async function runCreative(
     .where(eq(contentItems.id, contentItemId))
     .limit(1);
   if (!item) throw new Error(`Content item not found: ${contentItemId}`);
+  if (!item.currentContentVersionId) {
+    throw new Error(`Content item has no current content version: ${contentItemId}`);
+  }
 
-  const audioUrl = await deps.storage.getSignedUrl(
-    input.audioStorageKey,
-    deps.audioUrlTtlSeconds ?? 600,
-  );
+  const [version] = await db
+    .select()
+    .from(contentVersions)
+    .where(eq(contentVersions.id, item.currentContentVersionId))
+    .limit(1);
+  if (!version) {
+    throw new Error(`Content version not found: ${item.currentContentVersionId}`);
+  }
+
+  const visualBrief = await deps.llm.generateStructured({
+    schema: reelVisualBriefSchema,
+    system: VISUAL_BRIEF_SYSTEM_PROMPT,
+    prompt: `Hook: ${version.hook}\nSkript: ${version.script}\n\nZerlege dies in 3-5 visuelle Szenen gemaess Schema.`,
+    model: NODE_MODELS.visualBrief,
+  });
+
+  const audioUrl = await deps.storage.getSignedUrl(input.audioStorageKey, urlTtlSeconds);
+
+  const sceneStorageKeys: string[] = [];
+  const scenes: Scene[] = [];
+  const sliceSeconds = input.durationSeconds / visualBrief.scenes.length;
+  for (let i = 0; i < visualBrief.scenes.length; i++) {
+    const sceneBrief = visualBrief.scenes[i];
+    if (!sceneBrief) continue;
+    const imageBuffer = await deps.image.generateImage(sceneBrief.imagePrompt, "portrait");
+    const imageStorageKey = `creative/${item.id}/scene-${i}-${randomUUID()}.png`;
+    await deps.storage.upload(imageBuffer, imageStorageKey, "image/png");
+    sceneStorageKeys.push(imageStorageKey);
+    const imageUrl = await deps.storage.getSignedUrl(imageStorageKey, urlTtlSeconds);
+    scenes.push({
+      imageUrl,
+      startSeconds: i * sliceSeconds,
+      endSeconds: (i + 1) * sliceSeconds,
+    });
+  }
 
   const reelProps: ReelProps = {
     audioUrl,
     captions: input.captions,
+    scenes,
     durationSeconds: input.durationSeconds,
     fps: DEFAULT_FPS,
     width: DEFAULT_WIDTH,
@@ -82,11 +129,11 @@ export async function runCreative(
         workspaceId: item.workspaceId,
         contentItemId: item.id,
         versionNumber: 1,
-        remotionProps: { ...reelProps, audioUrl: undefined },
+        remotionProps: { ...reelProps, audioUrl: undefined, scenes: undefined },
         // Stored as storage keys, not URLs: the bucket is private, so
         // consumers (dashboard, publish step) must resolve these via
         // StorageProvider.getSignedUrl() rather than fetching directly.
-        assetRefs: [videoStorageKey, input.audioStorageKey],
+        assetRefs: [videoStorageKey, input.audioStorageKey, ...sceneStorageKeys],
         subtitleData: input.captions,
       })
       .returning();

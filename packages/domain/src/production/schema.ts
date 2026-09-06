@@ -26,3 +26,28 @@ export const qaJudgeOutputSchema = z.object({
   feedback: z.string().min(1),
 });
 export type QaJudgeOutput = z.infer<typeof qaJudgeOutputSchema>;
+
+export const reelVisualBriefSchema = z.object({
+  scenes: z
+    .array(
+      z.object({
+        imagePrompt: z.string().min(1).max(500),
+      }),
+    )
+    .min(3)
+    .max(5),
+});
+export type ReelVisualBrief = z.infer<typeof reelVisualBriefSchema>;
+
+export const staticSlidesBriefSchema = z.object({
+  slides: z
+    .array(
+      z.object({
+        text: z.string().min(1).max(120),
+        imagePrompt: z.string().min(1).max(500),
+      }),
+    )
+    .min(1)
+    .max(6),
+});
+export type StaticSlidesBrief = z.infer<typeof staticSlidesBriefSchema>;

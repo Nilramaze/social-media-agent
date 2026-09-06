@@ -11,7 +11,7 @@ import {
   db,
   workspaces,
 } from "@sma/db";
-import { FakeStorageProvider } from "@sma/providers";
+import { FakeImageProvider, FakeLLMProvider, FakeStorageProvider } from "@sma/providers";
 import { eq } from "drizzle-orm";
 import { runCreative } from "./creative";
 import { FakeVideoRenderer } from "../testing/fake-video-renderer";
@@ -73,6 +73,12 @@ test("runCreative renders via the injected renderer, uploads, and persists a cre
   try {
     const storage = new FakeStorageProvider();
     const renderer = new FakeVideoRenderer();
+    const llm = new FakeLLMProvider({
+      generateStructured: () => ({
+        scenes: [{ imagePrompt: "a full inbox on a laptop screen" }, { imagePrompt: "a clean dashboard with completed tasks" }],
+      }),
+    });
+    const image = new FakeImageProvider();
     const captions = [
       { text: "Hook Skript", startSeconds: 0, endSeconds: 1 },
       { text: "CTA", startSeconds: 1, endSeconds: 2 },
@@ -81,16 +87,19 @@ test("runCreative renders via the injected renderer, uploads, and persists a cre
     const { creativeVersionId } = await runCreative(
       item.id,
       { audioStorageKey: "voice/fake.mp3", captions, durationSeconds: 2 },
-      { storage, renderer },
+      { llm, image, storage, renderer },
     );
 
     assert.equal(renderer.calls.length, 1);
     assert.equal(renderer.calls[0]?.captions.length, 2);
-    // one upload for the audio (seeded separately in real flow) + one for the video
-    assert.equal(storage.uploads.size, 1);
+    assert.equal(renderer.calls[0]?.scenes.length, 2);
+    assert.equal(image.calls.length, 2);
+    // one upload per scene image + one for the video
+    assert.equal(storage.uploads.size, 3);
 
     const [creative] = await db.select().from(creativeVersions).where(eq(creativeVersions.id, creativeVersionId));
-    assert.equal(creative?.assetRefs.length, 2);
+    // video key + audio key + 2 scene image keys
+    assert.equal(creative?.assetRefs.length, 4);
     assert.deepEqual(creative?.subtitleData, captions);
 
     const [updatedItem] = await db.select().from(contentItems).where(eq(contentItems.id, item.id));

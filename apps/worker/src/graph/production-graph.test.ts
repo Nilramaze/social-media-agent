@@ -15,8 +15,16 @@ import {
   researchFindings,
   workspaces,
 } from "@sma/db";
-import { contentOutputSchema, FakeVideoRenderer, qaJudgeOutputSchema } from "@sma/domain";
 import {
+  contentOutputSchema,
+  FakeStaticSlideRenderer,
+  FakeVideoRenderer,
+  qaJudgeOutputSchema,
+  reelVisualBriefSchema,
+  staticSlidesBriefSchema,
+} from "@sma/domain";
+import {
+  FakeImageProvider,
   FakeLLMProvider,
   FakeStorageProvider,
   FakeVoiceProvider,
@@ -93,6 +101,9 @@ test("production graph loops back to content on QA fail, then finishes ready_for
             ? { verdict: "fail", feedback: "Hook zu schwach, bitte konkreter." }
             : { verdict: "pass", feedback: "Passt." };
         }
+        if (input.schema === reelVisualBriefSchema) {
+          return { scenes: [{ imagePrompt: "a full inbox" }, { imagePrompt: "a clean dashboard" }] };
+        }
         throw new Error("unexpected schema in test");
       },
     });
@@ -102,6 +113,7 @@ test("production graph loops back to content on QA fail, then finishes ready_for
       search: new FakeSearchProvider(),
       storage: new FakeStorageProvider(),
       voice: new FakeVoiceProvider(),
+      image: new FakeImageProvider(),
       renderer: new FakeVideoRenderer(),
     }).compile({
       checkpointer: new MemorySaver(),
@@ -171,6 +183,9 @@ test("human approval gate: interrupts on QA pass, loops on changes_requested, en
         if (input.schema === qaJudgeOutputSchema) {
           return { verdict: "pass", feedback: "Passt." };
         }
+        if (input.schema === reelVisualBriefSchema) {
+          return { scenes: [{ imagePrompt: "a full inbox" }, { imagePrompt: "a clean dashboard" }] };
+        }
         throw new Error("unexpected schema in test");
       },
     });
@@ -181,6 +196,7 @@ test("human approval gate: interrupts on QA pass, loops on changes_requested, en
       search: new FakeSearchProvider(),
       storage: new FakeStorageProvider(),
       voice: new FakeVoiceProvider(),
+      image: new FakeImageProvider(),
       renderer: new FakeVideoRenderer(),
       onApproved: async (contentItemId) => {
         onApprovedCalledWith = contentItemId;
@@ -231,6 +247,95 @@ test("human approval gate: interrupts on QA pass, loops on changes_requested, en
     assert.equal(allApprovals.length, 2);
     assert.ok(allApprovals.some((a) => a.decision === "approved"));
     assert.equal(onApprovedCalledWith, item.id);
+  } finally {
+    await cleanup({ workspaceId: workspace.id, campaignId: campaign.id, briefId: brief.id, itemId: item.id });
+  }
+});
+
+test("carousel-format items skip voice and render via the static slide path", async () => {
+  const [workspace] = await db.insert(workspaces).values({ name: `test-ws-${randomUUID()}` }).returning();
+  if (!workspace) throw new Error("failed");
+  await db.insert(brandProfiles).values({
+    workspaceId: workspace.id,
+    voice: "direkt",
+    guidelines: "keine Buzzwords",
+    targetAudience: "KMU",
+  });
+  const [campaign] = await db.insert(campaigns).values({ workspaceId: workspace.id, goalText: "x" }).returning();
+  if (!campaign) throw new Error("failed");
+  const [brief] = await db
+    .insert(contentBriefs)
+    .values({ workspaceId: workspace.id, campaignId: campaign.id, topic: "Email-Automatisierung", format: "carousel" })
+    .returning();
+  if (!brief) throw new Error("failed");
+  const [item] = await db
+    .insert(contentItems)
+    .values({ workspaceId: workspace.id, briefId: brief.id, format: "carousel" })
+    .returning();
+  if (!item) throw new Error("failed");
+
+  try {
+    const llm = new FakeLLMProvider({
+      runAgenticStructured: () => ({
+        summary: "Testzusammenfassung",
+        sources: [{ title: "Quelle", url: "https://example.com" }],
+      }),
+      generateStructured: (input) => {
+        if (input.schema === contentOutputSchema) {
+          return {
+            hook: "Hook",
+            script: "Skript",
+            caption: "Caption",
+            cta: "CTA",
+            hashtags: ["#a", "#b", "#c"],
+          };
+        }
+        if (input.schema === qaJudgeOutputSchema) {
+          return { verdict: "pass", feedback: "Passt." };
+        }
+        if (input.schema === staticSlidesBriefSchema) {
+          return {
+            slides: [
+              { text: "Volles Postfach", imagePrompt: "a stressed person facing a full inbox" },
+              { text: "Aufgeraeumtes Dashboard", imagePrompt: "a clean dashboard with completed tasks" },
+            ],
+          };
+        }
+        throw new Error("unexpected schema in test");
+      },
+    });
+
+    const voice = new FakeVoiceProvider();
+    const staticRenderer = new FakeStaticSlideRenderer();
+    const graph = buildProductionGraph({
+      llm,
+      search: new FakeSearchProvider(),
+      storage: new FakeStorageProvider(),
+      voice,
+      image: new FakeImageProvider(),
+      staticRenderer,
+    }).compile({
+      checkpointer: new MemorySaver(),
+    });
+
+    const result = await graph.invoke(
+      { contentItemId: item.id },
+      { configurable: { thread_id: item.id } },
+    );
+    assert.ok(getInterrupt(result), "expected graph to pause at human_approval");
+
+    assert.equal(voice.calls.length, 0);
+    assert.equal(staticRenderer.calls.length, 2);
+
+    const [finalItem] = await db.select().from(contentItems).where(eq(contentItems.id, item.id));
+    assert.equal(finalItem?.status, "ready_for_review");
+
+    const [creative] = await db
+      .select()
+      .from(creativeVersions)
+      .where(eq(creativeVersions.contentItemId, item.id));
+    assert.equal(creative?.assetRefs.length, 2);
+    assert.equal(creative?.subtitleData, null);
   } finally {
     await cleanup({ workspaceId: workspace.id, campaignId: campaign.id, briefId: brief.id, itemId: item.id });
   }

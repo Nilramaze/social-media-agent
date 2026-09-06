@@ -1,9 +1,9 @@
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { bundle } from "@remotion/bundler";
-import { renderMedia, selectComposition } from "@remotion/renderer";
-import { REEL_COMPOSITION_ID } from "./entry";
-import type { ReelProps } from "./schema";
+import { renderMedia, renderStill, selectComposition } from "@remotion/renderer";
+import { REEL_COMPOSITION_ID, SLIDE_COMPOSITION_ID } from "./entry";
+import type { ReelProps, SlideProps } from "./schema";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -35,6 +35,26 @@ export async function renderReelVideo(
     serveUrl,
     codec: "h264",
     outputLocation: outputPath,
+    inputProps: props,
+  });
+}
+
+export async function renderStillImage(
+  props: SlideProps,
+  outputPath: string,
+): Promise<void> {
+  const serveUrl = await getBundleLocation();
+
+  const composition = await selectComposition({
+    serveUrl,
+    id: SLIDE_COMPOSITION_ID,
+    inputProps: props,
+  });
+
+  await renderStill({
+    composition,
+    serveUrl,
+    output: outputPath,
     inputProps: props,
   });
 }
