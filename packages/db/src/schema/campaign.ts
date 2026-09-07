@@ -13,6 +13,10 @@ export const campaigns = pgTable("campaigns", {
     .notNull()
     .default("draft"),
   planningError: text("planning_error"),
+  // Uploaded design.md content (visual brand guidelines: colors, style,
+  // logo rules, etc.) - fed into the image-generation prompts so scene/slide
+  // visuals stay on-brand across the campaign's content items.
+  designGuidelines: text("design_guidelines"),
   createdAt: createdAtColumn(),
 });
 

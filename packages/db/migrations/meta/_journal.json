@@ -29,6 +29,13 @@
       "when": 1788771118435,
       "tag": "0003_outgoing_chronomancer",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788785663566,
+      "tag": "0004_redundant_molten_man",
+      "breakpoints": true
     }
   ]
 }

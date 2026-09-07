@@ -26,6 +26,7 @@ function elapsedSeconds(since: string | null, now: number): number | null {
 
 function RetryItemButton({ id, onRetried }: { id: string; onRetried: () => void }) {
   const [pending, setPending] = useState(false);
+  const [justRetried, setJustRetried] = useState(false);
 
   async function onRetry() {
     setPending(true);
@@ -33,6 +34,11 @@ function RetryItemButton({ id, onRetried }: { id: string; onRetried: () => void 
       const res = await fetch(`/api/content-items/${id}/retry`, { method: "POST" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       onRetried();
+      // Confirms the click registered even if it fails again within the
+      // next poll tick (e.g. a still-missing API key) - otherwise a fast
+      // re-fail looks indistinguishable from the button doing nothing.
+      setJustRetried(true);
+      setTimeout(() => setJustRetried(false), 3000);
     } catch (err) {
       alert(err instanceof Error ? err.message : String(err));
     } finally {
@@ -47,13 +53,14 @@ function RetryItemButton({ id, onRetried }: { id: string; onRetried: () => void 
       disabled={pending}
       className="shrink-0 rounded border border-agent-pulse/40 px-2.5 py-1 text-label-md text-agent-pulse hover:bg-agent-pulse hover:text-on-primary transition-colors disabled:opacity-50"
     >
-      {pending ? "…" : "erneut versuchen"}
+      {pending ? "…" : justRetried ? "neu gestartet ✓" : "erneut versuchen"}
     </button>
   );
 }
 
 function RetryAllFailedButton({ count, onRetried }: { count: number; onRetried: () => void }) {
   const [pending, setPending] = useState(false);
+  const [lastResult, setLastResult] = useState<number | null>(null);
 
   async function onRetryAll() {
     if (!window.confirm(`${count} fehlgeschlagene Content-Items erneut versuchen?`)) return;
@@ -61,7 +68,10 @@ function RetryAllFailedButton({ count, onRetried }: { count: number; onRetried: 
     try {
       const res = await fetch("/api/content-items/retry-failed", { method: "POST" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const body = (await res.json()) as { retried: number };
       onRetried();
+      setLastResult(body.retried);
+      setTimeout(() => setLastResult(null), 4000);
     } catch (err) {
       alert(err instanceof Error ? err.message : String(err));
     } finally {
@@ -76,7 +86,11 @@ function RetryAllFailedButton({ count, onRetried }: { count: number; onRetried: 
       disabled={pending}
       className="px-3 py-1.5 rounded border border-agent-pulse/40 text-label-md text-agent-pulse hover:bg-agent-pulse hover:text-on-primary transition-colors disabled:opacity-50"
     >
-      {pending ? "…" : `Alle ${count} fehlgeschlagenen erneut versuchen`}
+      {pending
+        ? "…"
+        : lastResult !== null
+          ? `${lastResult} neu gestartet ✓`
+          : `Alle ${count} fehlgeschlagenen erneut versuchen`}
     </button>
   );
 }

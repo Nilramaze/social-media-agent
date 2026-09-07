@@ -6,8 +6,18 @@ import { useState } from "react";
 export function NewCampaignForm() {
   const router = useRouter();
   const [goalText, setGoalText] = useState("");
+  const [designGuidelines, setDesignGuidelines] = useState("");
+  const [designFileName, setDesignFileName] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  async function onDesignFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const text = await file.text();
+    setDesignGuidelines(text);
+    setDesignFileName(file.name);
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -17,7 +27,10 @@ export function NewCampaignForm() {
       const res = await fetch("/api/campaigns", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ goalText }),
+        body: JSON.stringify({
+          goalText,
+          ...(designGuidelines ? { designGuidelines } : {}),
+        }),
       });
       const body = await res.json();
       if (!res.ok) {
@@ -47,6 +60,36 @@ export function NewCampaignForm() {
         value={goalText}
         onChange={(e) => setGoalText(e.target.value)}
       />
+      <div className="flex items-center justify-between">
+        <label htmlFor="design-file" className="font-sans text-label-md text-on-surface-variant uppercase tracking-wider">
+          Design-Richtlinien (design.md)
+        </label>
+        <span className="font-sans text-mono-data text-ink-muted">Optional</span>
+      </div>
+      <div className="flex items-center gap-3">
+        <label
+          htmlFor="design-file"
+          className="cursor-pointer px-4 py-2.5 rounded-lg border border-border-subtle bg-surface-bone text-body-md text-primary hover:border-primary transition-colors"
+        >
+          Datei auswaehlen…
+        </label>
+        <input
+          id="design-file"
+          type="file"
+          accept=".md,.txt,text/markdown,text/plain"
+          onChange={onDesignFileChange}
+          className="hidden"
+        />
+        {designFileName ? (
+          <span className="text-mono-data text-ink-muted truncate">
+            {designFileName} ({designGuidelines.length} Zeichen)
+          </span>
+        ) : (
+          <span className="text-mono-data text-ink-muted">
+            Farben, Stil, Logo-Regeln etc. - fliesst in die Bildgenerierung ein.
+          </span>
+        )}
+      </div>
       {error ? <p className="text-body-md text-agent-terminating">{error}</p> : null}
       <button
         type="submit"

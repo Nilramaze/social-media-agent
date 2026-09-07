@@ -6,6 +6,7 @@ import { useState } from "react";
 export function RetryButton({ endpoint, label = "Erneut versuchen" }: { endpoint: string; label?: string }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
+  const [justRetried, setJustRetried] = useState(false);
 
   async function onRetry() {
     setPending(true);
@@ -15,6 +16,11 @@ export function RetryButton({ endpoint, label = "Erneut versuchen" }: { endpoint
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error ? String(body.error) : `HTTP ${res.status}`);
       }
+      // Briefly confirm the click landed before refreshing - a fast re-fail
+      // (e.g. a still-missing API key) would otherwise look identical to
+      // the button doing nothing.
+      setJustRetried(true);
+      setTimeout(() => setJustRetried(false), 3000);
       router.refresh();
     } catch (err) {
       alert(err instanceof Error ? err.message : String(err));
@@ -30,7 +36,7 @@ export function RetryButton({ endpoint, label = "Erneut versuchen" }: { endpoint
       disabled={pending}
       className="shrink-0 rounded border border-agent-pulse/40 px-3 py-1.5 text-label-md text-agent-pulse hover:bg-agent-pulse hover:text-on-primary transition-colors disabled:opacity-50"
     >
-      {pending ? "…" : label}
+      {pending ? "…" : justRetried ? "neu gestartet ✓" : label}
     </button>
   );
 }

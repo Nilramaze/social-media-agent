@@ -16,7 +16,7 @@ import { eq } from "drizzle-orm";
 import { runCreative } from "./creative";
 import { FakeVideoRenderer } from "../testing/fake-video-renderer";
 
-async function seedContentItemWithVersion() {
+async function seedContentItemWithVersion(designGuidelines?: string) {
   const [workspace] = await db.insert(workspaces).values({ name: `test-ws-${randomUUID()}` }).returning();
   if (!workspace) throw new Error("failed");
   await db.insert(brandProfiles).values({
@@ -25,7 +25,10 @@ async function seedContentItemWithVersion() {
     guidelines: "keine Buzzwords",
     targetAudience: "KMU",
   });
-  const [campaign] = await db.insert(campaigns).values({ workspaceId: workspace.id, goalText: "x" }).returning();
+  const [campaign] = await db
+    .insert(campaigns)
+    .values({ workspaceId: workspace.id, goalText: "x", designGuidelines })
+    .returning();
   if (!campaign) throw new Error("failed");
   const [brief] = await db
     .insert(contentBriefs)
@@ -104,6 +107,35 @@ test("runCreative renders via the injected renderer, uploads, and persists a cre
 
     const [updatedItem] = await db.select().from(contentItems).where(eq(contentItems.id, item.id));
     assert.equal(updatedItem?.currentCreativeVersionId, creativeVersionId);
+  } finally {
+    await cleanup({ workspaceId: workspace.id, campaignId: campaign.id, briefId: brief.id, itemId: item.id });
+  }
+});
+
+test("runCreative includes the campaign's design guidelines in the visual brief prompt", async () => {
+  const { workspace, campaign, brief, item } = await seedContentItemWithVersion(
+    "Primaerfarbe: #1A2B3C. Immer flaches Illustrations-Design, nie Fotorealismus.",
+  );
+
+  try {
+    const storage = new FakeStorageProvider();
+    const renderer = new FakeVideoRenderer();
+    let capturedPrompt = "";
+    const llm = new FakeLLMProvider({
+      generateStructured: (input) => {
+        capturedPrompt = input.prompt;
+        return { scenes: [{ imagePrompt: "a full inbox" }, { imagePrompt: "a clean dashboard" }] };
+      },
+    });
+    const image = new FakeImageProvider();
+
+    await runCreative(
+      item.id,
+      { audioStorageKey: "voice/fake.mp3", captions: [{ text: "x", startSeconds: 0, endSeconds: 2 }], durationSeconds: 2 },
+      { llm, image, storage, renderer },
+    );
+
+    assert.ok(capturedPrompt.includes("#1A2B3C"), "expected the design guidelines to appear in the visual brief prompt");
   } finally {
     await cleanup({ workspaceId: workspace.id, campaignId: campaign.id, briefId: brief.id, itemId: item.id });
   }

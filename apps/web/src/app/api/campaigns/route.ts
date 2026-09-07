@@ -6,6 +6,7 @@ import { z } from "zod";
 const createCampaignSchema = z.object({
   workspaceId: z.string().optional(),
   goalText: z.string().min(1),
+  designGuidelines: z.string().max(20_000).optional(),
 });
 
 export async function POST(request: Request) {
@@ -29,7 +30,11 @@ export async function POST(request: Request) {
 
   const [campaign] = await db
     .insert(campaigns)
-    .values({ workspaceId, goalText: parsed.data.goalText })
+    .values({
+      workspaceId,
+      goalText: parsed.data.goalText,
+      designGuidelines: parsed.data.designGuidelines || null,
+    })
     .returning();
   if (!campaign) {
     return NextResponse.json({ error: "Failed to create campaign" }, { status: 500 });

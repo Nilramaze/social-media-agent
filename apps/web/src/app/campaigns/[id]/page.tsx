@@ -10,6 +10,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { STATUS_LABELS, STEP_LABELS } from "@/lib/labels";
 import { DeleteButton } from "@/components/delete-button";
+import { DesignGuidelinesEditor } from "./design-guidelines-editor";
 
 export const dynamic = "force-dynamic";
 
@@ -78,6 +79,8 @@ export default async function CampaignDetailPage({
           label="Kampagne loeschen"
         />
       </div>
+
+      <DesignGuidelinesEditor campaignId={campaign.id} initialValue={campaign.designGuidelines} />
 
       {campaign.status === "failed" ? (
         <p className="rounded-xl border border-agent-terminating/40 bg-agent-terminating/5 p-4 text-body-md text-agent-terminating">

@@ -14,6 +14,7 @@ import { readFile } from "node:fs/promises";
 import type { ImageProvider, LLMProvider, StorageProvider } from "@sma/providers";
 import { eq } from "drizzle-orm";
 import { NODE_MODELS } from "../model-config";
+import { getDesignGuidelines } from "./design-guidelines";
 import { staticSlidesBriefSchema } from "./schema";
 
 export interface StaticSlideRenderer {
@@ -71,10 +72,22 @@ export async function runCreativeStatic(
       ? "Erzeuge genau 1 Slide."
       : "Erzeuge 4-6 Slides fuer ein Carousel.";
 
+  const designGuidelines = await getDesignGuidelines(item.briefId, { db });
+
   const brief = await deps.llm.generateStructured({
     schema: staticSlidesBriefSchema,
     system: STATIC_BRIEF_SYSTEM_PROMPT,
-    prompt: `Format: ${input.format}\nHook: ${version.hook}\nSkript: ${version.script}\nCaption: ${version.caption}\nCTA: ${version.cta}\n\n${slideCountInstruction}`,
+    prompt: [
+      `Format: ${input.format}`,
+      `Hook: ${version.hook}`,
+      `Skript: ${version.script}`,
+      `Caption: ${version.caption}`,
+      `CTA: ${version.cta}`,
+      designGuidelines ? `\nDesign-Richtlinien der Kampagne (unbedingt einhalten):\n${designGuidelines}` : "",
+      `\n${slideCountInstruction}`,
+    ]
+      .filter(Boolean)
+      .join("\n"),
     model: NODE_MODELS.visualBrief,
   });
 

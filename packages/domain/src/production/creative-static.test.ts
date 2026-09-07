@@ -16,7 +16,7 @@ import { eq } from "drizzle-orm";
 import { runCreativeStatic } from "./creative-static";
 import { FakeStaticSlideRenderer } from "../testing/fake-static-slide-renderer";
 
-async function seedContentItemWithVersion(format: "carousel" | "post") {
+async function seedContentItemWithVersion(format: "carousel" | "post", designGuidelines?: string) {
   const [workspace] = await db.insert(workspaces).values({ name: `test-ws-${randomUUID()}` }).returning();
   if (!workspace) throw new Error("failed");
   await db.insert(brandProfiles).values({
@@ -25,7 +25,10 @@ async function seedContentItemWithVersion(format: "carousel" | "post") {
     guidelines: "keine Buzzwords",
     targetAudience: "KMU",
   });
-  const [campaign] = await db.insert(campaigns).values({ workspaceId: workspace.id, goalText: "x" }).returning();
+  const [campaign] = await db
+    .insert(campaigns)
+    .values({ workspaceId: workspace.id, goalText: "x", designGuidelines })
+    .returning();
   if (!campaign) throw new Error("failed");
   const [brief] = await db
     .insert(contentBriefs)
@@ -132,6 +135,32 @@ test("runCreativeStatic renders a single slide for post", async () => {
 
     const [creative] = await db.select().from(creativeVersions).where(eq(creativeVersions.id, creativeVersionId));
     assert.equal(creative?.assetRefs.length, 1);
+  } finally {
+    await cleanup({ workspaceId: workspace.id, campaignId: campaign.id, briefId: brief.id, itemId: item.id });
+  }
+});
+
+test("runCreativeStatic includes the campaign's design guidelines in the slides brief prompt", async () => {
+  const { workspace, campaign, brief, item } = await seedContentItemWithVersion(
+    "post",
+    "Primaerfarbe: #1A2B3C. Immer flaches Illustrations-Design, nie Fotorealismus.",
+  );
+
+  try {
+    const storage = new FakeStorageProvider();
+    const renderer = new FakeStaticSlideRenderer();
+    let capturedPrompt = "";
+    const llm = new FakeLLMProvider({
+      generateStructured: (input) => {
+        capturedPrompt = input.prompt;
+        return { slides: [{ text: "Text", imagePrompt: "a clean dashboard" }] };
+      },
+    });
+    const image = new FakeImageProvider();
+
+    await runCreativeStatic(item.id, { format: "post" }, { llm, image, storage, renderer });
+
+    assert.ok(capturedPrompt.includes("#1A2B3C"), "expected the design guidelines to appear in the slides brief prompt");
   } finally {
     await cleanup({ workspaceId: workspace.id, campaignId: campaign.id, briefId: brief.id, itemId: item.id });
   }

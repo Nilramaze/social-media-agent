@@ -20,6 +20,7 @@ import {
 import type { ImageProvider, LLMProvider, StorageProvider } from "@sma/providers";
 import { eq } from "drizzle-orm";
 import { NODE_MODELS } from "../model-config";
+import { getDesignGuidelines } from "./design-guidelines";
 import { reelVisualBriefSchema } from "./schema";
 import type { Caption } from "./voice";
 
@@ -78,10 +79,19 @@ export async function runCreative(
     throw new Error(`Content version not found: ${item.currentContentVersionId}`);
   }
 
+  const designGuidelines = await getDesignGuidelines(item.briefId, { db });
+
   const visualBrief = await deps.llm.generateStructured({
     schema: reelVisualBriefSchema,
     system: VISUAL_BRIEF_SYSTEM_PROMPT,
-    prompt: `Hook: ${version.hook}\nSkript: ${version.script}\n\nZerlege dies in 3-5 visuelle Szenen gemaess Schema.`,
+    prompt: [
+      `Hook: ${version.hook}`,
+      `Skript: ${version.script}`,
+      designGuidelines ? `\nDesign-Richtlinien der Kampagne (unbedingt einhalten):\n${designGuidelines}` : "",
+      "\nZerlege dies in 3-5 visuelle Szenen gemaess Schema.",
+    ]
+      .filter(Boolean)
+      .join("\n"),
     model: NODE_MODELS.visualBrief,
   });
 
