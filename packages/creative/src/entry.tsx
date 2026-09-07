@@ -5,14 +5,13 @@ import {
   DEFAULT_FPS,
   DEFAULT_HEIGHT,
   DEFAULT_WIDTH,
+  REEL_COMPOSITION_ID,
+  SLIDE_COMPOSITION_ID,
   SLIDE_HEIGHT,
   SLIDE_WIDTH,
   type ReelProps,
   type SlideProps,
 } from "./schema";
-
-export const REEL_COMPOSITION_ID = "Reel";
-export const SLIDE_COMPOSITION_ID = "Slide";
 
 function calculateReelMetadata({ props }: { props: ReelProps }) {
   const fps = props.fps ?? DEFAULT_FPS;

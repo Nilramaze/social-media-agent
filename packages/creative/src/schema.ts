@@ -33,3 +33,9 @@ export const DEFAULT_HEIGHT = 1920;
 
 export const SLIDE_WIDTH = 1080;
 export const SLIDE_HEIGHT = 1080;
+
+// Kept here (not in entry.tsx) so render.ts can reference them without
+// importing the Remotion React composition tree - entry.tsx is only ever
+// loaded by Remotion's own bundler via its file path, never by our app.
+export const REEL_COMPOSITION_ID = "Reel";
+export const SLIDE_COMPOSITION_ID = "Slide";

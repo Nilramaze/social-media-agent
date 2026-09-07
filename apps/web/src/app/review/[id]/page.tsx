@@ -88,6 +88,16 @@ export default async function ReviewDetailPage({
             {brief?.topic ?? "Content"}
           </h1>
           <p className="text-mono-data text-ink-muted">QA-Retries: {item.qaRetryCount}</p>
+          {item.scheduledFor ? (
+            <p className="text-mono-data text-ink-muted">
+              Geplanter Termin:{" "}
+              <span className="text-primary">{new Date(item.scheduledFor).toLocaleString("de-DE")}</span>
+              {" · "}
+              <a href="/calendar" className="underline hover:text-primary">
+                im Kalender verschieben
+              </a>
+            </p>
+          ) : null}
           {item.status === "failed" && item.lastError ? (
             <p className="text-body-md text-agent-terminating">{item.lastError}</p>
           ) : null}

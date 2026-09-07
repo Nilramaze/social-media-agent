@@ -10,6 +10,8 @@ const NAV_ITEMS = [
   { href: "/campaigns", label: "Kampagnen", n: "02" },
   { href: "/review", label: "Review-Queue", n: "03" },
   { href: "/pipeline", label: "Pipeline (Live)", n: "04" },
+  { href: "/calendar", label: "Kalender", n: "05" },
+  { href: "/agents", label: "Agenten-Uebersicht", n: "06" },
 ];
 
 export function Sidebar() {

@@ -11,6 +11,13 @@ try {
 
 const nextConfig: NextConfig = {
   agentRules: false,
+  // @sma/domain's barrel export pulls in @sma/creative (Remotion) even for
+  // routes that only touch plain DB helpers. Remotion's renderer does
+  // platform-conditional `require()` calls for its native compositor
+  // binary that the bundler can't statically resolve - leave it external
+  // so Node resolves it at runtime instead (same as the worker, which
+  // isn't bundled at all).
+  serverExternalPackages: ["@remotion/renderer", "@remotion/bundler", "@sma/creative"],
 };
 
 export default nextConfig;

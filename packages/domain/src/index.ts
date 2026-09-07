@@ -12,6 +12,7 @@ export * from "./production/creative-static";
 export * from "./production/qa";
 export * from "./production/approval";
 export * from "./production/step";
+export * from "./production/schedule";
 export * from "./deletion";
 export * from "./publish/run-publish";
 export * from "./analytics/schema";

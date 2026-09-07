@@ -11,6 +11,7 @@ export async function GET() {
       currentStepStartedAt: contentItems.currentStepStartedAt,
       format: contentItems.format,
       qaRetryCount: contentItems.qaRetryCount,
+      scheduledFor: contentItems.scheduledFor,
       topic: contentBriefs.topic,
       campaignId: campaigns.id,
       campaignGoal: campaigns.goalText,

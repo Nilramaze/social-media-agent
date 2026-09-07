@@ -46,6 +46,9 @@ export const contentItems = pgTable("content_items", {
   currentContentVersionId: text("current_content_version_id"),
   currentCreativeVersionId: text("current_creative_version_id"),
   qaRetryCount: integer("qa_retry_count").notNull().default(0),
+  // Auto-assigned once QA passes (one slot/day per campaign); adjustable via
+  // the calendar view. Drives the publish delay once a human approves.
+  scheduledFor: timestamp("scheduled_for", { withTimezone: true }),
   createdAt: createdAtColumn(),
 });
 

@@ -191,6 +191,7 @@ test("human approval gate: interrupts on QA pass, loops on changes_requested, en
     });
 
     let onApprovedCalledWith: string | undefined;
+    let onApprovedDelayMs: number | undefined;
     const graph = buildProductionGraph({
       llm,
       search: new FakeSearchProvider(),
@@ -198,8 +199,9 @@ test("human approval gate: interrupts on QA pass, loops on changes_requested, en
       voice: new FakeVoiceProvider(),
       image: new FakeImageProvider(),
       renderer: new FakeVideoRenderer(),
-      onApproved: async (contentItemId) => {
+      onApproved: async (contentItemId, delayMs) => {
         onApprovedCalledWith = contentItemId;
+        onApprovedDelayMs = delayMs;
       },
     }).compile({
       checkpointer: new MemorySaver(),
@@ -211,6 +213,8 @@ test("human approval gate: interrupts on QA pass, loops on changes_requested, en
 
     const [afterQa] = await db.select().from(contentItems).where(eq(contentItems.id, item.id));
     assert.equal(afterQa?.status, "ready_for_review");
+    // QA pass auto-places it on the calendar, ready for the reviewer to see a proposed date.
+    assert.ok(afterQa?.scheduledFor, "expected QA pass to auto-assign a calendar slot");
 
     const secondResult = await graph.invoke(
       new Command({
@@ -241,12 +245,16 @@ test("human approval gate: interrupts on QA pass, loops on changes_requested, en
     assert.equal(getInterrupt(finalResult), undefined);
 
     const [finalItem] = await db.select().from(contentItems).where(eq(contentItems.id, item.id));
-    assert.equal(finalItem?.status, "approved");
+    // "approved" transitions straight to "scheduled" once the delayed
+    // publish job has been handed off - the calendar slot is what now
+    // controls when it actually goes out.
+    assert.equal(finalItem?.status, "scheduled");
 
     const allApprovals = await db.select().from(approvals).where(eq(approvals.contentItemId, item.id));
     assert.equal(allApprovals.length, 2);
     assert.ok(allApprovals.some((a) => a.decision === "approved"));
     assert.equal(onApprovedCalledWith, item.id);
+    assert.ok(onApprovedDelayMs !== undefined && onApprovedDelayMs > 0, "expected a positive publish delay from the auto-assigned slot");
   } finally {
     await cleanup({ workspaceId: workspace.id, campaignId: campaign.id, briefId: brief.id, itemId: item.id });
   }

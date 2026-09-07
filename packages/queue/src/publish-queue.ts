@@ -32,3 +32,24 @@ export async function enqueuePublish(
     removeOnFail: 100,
   });
 }
+
+/**
+ * Re-times an already-scheduled publish job (e.g. the item was dragged to a
+ * new day on the calendar). BullMQ dedupes `add()` by jobId and silently
+ * keeps the existing job's delay, so the pending delayed job has to be
+ * removed first. A no-op if the job is already running/done - that item
+ * missed the reschedule window and publishes as originally scheduled.
+ */
+export async function reschedulePublish(
+  contentItemId: string,
+  delayMs: number,
+): Promise<void> {
+  const queue = getPublishQueue();
+  const existing = await queue.getJob(`publish-${contentItemId}`);
+  if (existing) {
+    const state = await existing.getState();
+    if (state !== "delayed" && state !== "waiting") return;
+    await existing.remove();
+  }
+  await enqueuePublish({ contentItemId }, delayMs);
+}

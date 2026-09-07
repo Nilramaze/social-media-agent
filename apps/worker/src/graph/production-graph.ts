@@ -2,7 +2,10 @@ import { END, START, StateGraph, interrupt } from "@langchain/langgraph";
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import {
   approvalDecisionSchema,
+  assignScheduledSlot,
   getContentItemFormat,
+  getContentItemSchedule,
+  markContentItemScheduled,
   markContentItemStep,
   recordApprovalDecision,
   runContent,
@@ -43,8 +46,8 @@ export interface ProductionGraphDeps {
   image: ImageProvider;
   renderer?: VideoRenderer;
   staticRenderer?: StaticSlideRenderer;
-  /** Defaults to the real publish queue; override in tests to avoid touching Redis. */
-  onApproved?: (contentItemId: string) => Promise<void>;
+  /** Defaults to the real publish queue, delayed until the item's calendar slot; override in tests to avoid touching Redis. */
+  onApproved?: (contentItemId: string, delayMs: number) => Promise<void>;
 }
 
 export function buildProductionGraph({
@@ -55,7 +58,7 @@ export function buildProductionGraph({
   image,
   renderer,
   staticRenderer,
-  onApproved = (contentItemId) => enqueuePublish({ contentItemId }),
+  onApproved = (contentItemId, delayMs) => enqueuePublish({ contentItemId }, delayMs),
 }: ProductionGraphDeps) {
   async function resolveCreativeNode(contentItemId: string): Promise<"creative" | "creative_static"> {
     const format = await getContentItemFormat(contentItemId);
@@ -113,6 +116,11 @@ export function buildProductionGraph({
     .addNode("qa", async (state) => {
       await markContentItemStep(state.contentItemId, "qa");
       const result = await runQA(state.contentItemId, { llm });
+      if (result.verdict === "pass") {
+        // Auto-place it on the calendar the moment it's ready for review, so
+        // the human reviewer sees a proposed date instead of an empty one.
+        await assignScheduledSlot(state.contentItemId);
+      }
       if (result.verdict === "pass" || result.needsHumanReview) {
         // About to pause for human input or stop entirely - no agent is
         // actively working on this item right now.
@@ -133,7 +141,10 @@ export function buildProductionGraph({
       return { approvalDecision: decision.decision, approvalTarget: decision.target };
     })
     .addNode("schedule_publish", async (state) => {
-      await onApproved(state.contentItemId);
+      const scheduledFor = await getContentItemSchedule(state.contentItemId);
+      const delayMs = scheduledFor ? Math.max(0, scheduledFor.getTime() - Date.now()) : 0;
+      await markContentItemScheduled(state.contentItemId);
+      await onApproved(state.contentItemId, delayMs);
       return {};
     })
     .addEdge(START, "research")

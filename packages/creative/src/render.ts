@@ -2,8 +2,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { bundle } from "@remotion/bundler";
 import { renderMedia, renderStill, selectComposition } from "@remotion/renderer";
-import { REEL_COMPOSITION_ID, SLIDE_COMPOSITION_ID } from "./entry";
-import type { ReelProps, SlideProps } from "./schema";
+import { REEL_COMPOSITION_ID, SLIDE_COMPOSITION_ID, type ReelProps, type SlideProps } from "./schema";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
