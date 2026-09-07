@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+
+const SWIPE_THRESHOLD_PX = 40;
 
 export function MediaPreview({
   format,
@@ -10,6 +12,23 @@ export function MediaPreview({
   mediaUrls: string[];
 }) {
   const [index, setIndex] = useState(0);
+  const touchStartX = useRef<number | null>(null);
+
+  function onTouchStart(e: React.TouchEvent) {
+    touchStartX.current = e.touches[0]?.clientX ?? null;
+  }
+
+  function onTouchEnd(e: React.TouchEvent) {
+    if (touchStartX.current === null) return;
+    const deltaX = (e.changedTouches[0]?.clientX ?? touchStartX.current) - touchStartX.current;
+    touchStartX.current = null;
+    if (Math.abs(deltaX) < SWIPE_THRESHOLD_PX) return;
+    if (deltaX < 0) {
+      setIndex((i) => Math.min(i + 1, mediaUrls.length - 1));
+    } else {
+      setIndex((i) => Math.max(i - 1, 0));
+    }
+  }
 
   if (mediaUrls.length === 0) {
     return (
@@ -27,9 +46,13 @@ export function MediaPreview({
   const current = mediaUrls[Math.min(index, mediaUrls.length - 1)];
 
   return (
-    <>
+    <div
+      className="relative w-full h-full touch-pan-y"
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}
+    >
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={current} alt="" className="w-full h-full object-cover" />
+      <img src={current} alt="" className="w-full h-full object-cover select-none" draggable={false} />
       {mediaUrls.length > 1 ? (
         <>
           {index > 0 ? (
@@ -57,14 +80,19 @@ export function MediaPreview({
           </div>
           <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5">
             {mediaUrls.map((url, i) => (
-              <span
+              <button
                 key={url}
-                className={`w-1.5 h-1.5 rounded-full ${i === index ? "bg-on-primary" : "bg-on-primary/40"}`}
-              />
+                type="button"
+                onClick={() => setIndex(i)}
+                aria-label={`Bild ${i + 1}`}
+                className="p-1.5 -m-1.5"
+              >
+                <span className={`block w-1.5 h-1.5 rounded-full ${i === index ? "bg-on-primary" : "bg-on-primary/40"}`} />
+              </button>
             ))}
           </div>
         </>
       ) : null}
-    </>
+    </div>
   );
 }
