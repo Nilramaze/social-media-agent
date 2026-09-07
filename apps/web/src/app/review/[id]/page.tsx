@@ -14,6 +14,7 @@ import { STATUS_LABELS } from "@/lib/labels";
 import { DeleteButton } from "@/components/delete-button";
 import { RetryButton } from "@/components/retry-button";
 import { ReviewActions } from "./actions";
+import { MediaPreview } from "./media-preview";
 
 export const dynamic = "force-dynamic";
 
@@ -47,24 +48,26 @@ async function getContentItemDetail(id: string) {
     .where(eq(qaResults.contentItemId, id))
     .orderBy(desc(qaResults.createdAt));
 
-  let videoUrl: string | null = null;
+  let mediaUrls: string[] = [];
   if (item.currentCreativeVersionId) {
     const [creative] = await db
       .select()
       .from(creativeVersions)
       .where(eq(creativeVersions.id, item.currentCreativeVersionId))
       .limit(1);
-    const storageKey = creative?.assetRefs[0];
-    if (storageKey) {
-      try {
-        videoUrl = await getStorageProvider().getSignedUrl(storageKey, 3600);
-      } catch {
-        videoUrl = null;
-      }
+    // Reels store [video, audio, ...scene images] - only the video belongs
+    // in the preview. Carousel/post store one image per slide, in order.
+    const storageKeys =
+      item.format === "reel" ? creative?.assetRefs.slice(0, 1) : creative?.assetRefs;
+    if (storageKeys?.length) {
+      const storage = getStorageProvider();
+      mediaUrls = await Promise.all(
+        storageKeys.map((key) => storage.getSignedUrl(key, 3600).catch(() => null)),
+      ).then((urls) => urls.filter((url): url is string => url !== null));
     }
   }
 
-  return { item, brief, currentVersion, research: research ?? null, qaHistory, videoUrl };
+  return { item, brief, currentVersion, research: research ?? null, qaHistory, mediaUrls };
 }
 
 export default async function ReviewDetailPage({
@@ -76,7 +79,7 @@ export default async function ReviewDetailPage({
   const data = await getContentItemDetail(id);
   if (!data) notFound();
 
-  const { item, brief, currentVersion, research, qaHistory, videoUrl } = data;
+  const { item, brief, currentVersion, research, qaHistory, mediaUrls } = data;
 
   return (
     <div className="w-full max-w-7xl mx-auto px-8 py-10 space-y-8">
@@ -229,13 +232,10 @@ export default async function ReviewDetailPage({
               <span className="material-symbols-outlined text-ink-graphite">more_horiz</span>
             </div>
 
-            <div className="relative w-full aspect-[9/16] bg-surface-container-highest overflow-hidden flex items-center justify-center">
-              {videoUrl ? (
-                // eslint-disable-next-line jsx-a11y/media-has-caption
-                <video src={videoUrl} controls className="w-full h-full object-cover" />
-              ) : (
-                <span className="text-body-md text-ink-muted">Noch kein Video gerendert</span>
-              )}
+            <div
+              className={`relative w-full ${item.format === "reel" ? "aspect-[9/16]" : "aspect-square"} bg-surface-container-highest overflow-hidden flex items-center justify-center`}
+            >
+              <MediaPreview format={item.format} mediaUrls={mediaUrls} />
             </div>
 
             <div className="px-4 pt-3 pb-2 flex items-center justify-between">
