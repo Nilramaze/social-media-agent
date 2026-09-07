@@ -12,6 +12,7 @@ import { notFound } from "next/navigation";
 import { getStorageProvider } from "@/lib/storage";
 import { STATUS_LABELS } from "@/lib/labels";
 import { DeleteButton } from "@/components/delete-button";
+import { RetryButton } from "@/components/retry-button";
 import { ReviewActions } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -102,11 +103,16 @@ export default async function ReviewDetailPage({
             <p className="text-body-md text-agent-terminating">{item.lastError}</p>
           ) : null}
         </div>
-        <DeleteButton
-          endpoint={`/api/content-items/${item.id}`}
-          confirmText={`Content-Item "${brief?.topic ?? item.id}" wirklich loeschen?`}
-          redirectTo="/review"
-        />
+        <div className="flex items-center gap-2 shrink-0">
+          {item.status === "failed" ? (
+            <RetryButton endpoint={`/api/content-items/${item.id}/retry`} />
+          ) : null}
+          <DeleteButton
+            endpoint={`/api/content-items/${item.id}`}
+            confirmText={`Content-Item "${brief?.topic ?? item.id}" wirklich loeschen?`}
+            redirectTo="/review"
+          />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { STATUS_LABELS, STEP_LABELS } from "@/lib/labels";
 
 interface PipelineItem {
@@ -11,6 +11,7 @@ interface PipelineItem {
   currentStepStartedAt: string | null;
   format: string;
   qaRetryCount: number;
+  lastError: string | null;
   topic: string;
   campaignId: string;
   campaignGoal: string;
@@ -21,6 +22,63 @@ const POLL_INTERVAL_MS = 2000;
 function elapsedSeconds(since: string | null, now: number): number | null {
   if (!since) return null;
   return Math.max(0, Math.round((now - new Date(since).getTime()) / 1000));
+}
+
+function RetryItemButton({ id, onRetried }: { id: string; onRetried: () => void }) {
+  const [pending, setPending] = useState(false);
+
+  async function onRetry() {
+    setPending(true);
+    try {
+      const res = await fetch(`/api/content-items/${id}/retry`, { method: "POST" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      onRetried();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onRetry}
+      disabled={pending}
+      className="shrink-0 rounded border border-agent-pulse/40 px-2.5 py-1 text-label-md text-agent-pulse hover:bg-agent-pulse hover:text-on-primary transition-colors disabled:opacity-50"
+    >
+      {pending ? "…" : "erneut versuchen"}
+    </button>
+  );
+}
+
+function RetryAllFailedButton({ count, onRetried }: { count: number; onRetried: () => void }) {
+  const [pending, setPending] = useState(false);
+
+  async function onRetryAll() {
+    if (!window.confirm(`${count} fehlgeschlagene Content-Items erneut versuchen?`)) return;
+    setPending(true);
+    try {
+      const res = await fetch("/api/content-items/retry-failed", { method: "POST" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      onRetried();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onRetryAll}
+      disabled={pending}
+      className="px-3 py-1.5 rounded border border-agent-pulse/40 text-label-md text-agent-pulse hover:bg-agent-pulse hover:text-on-primary transition-colors disabled:opacity-50"
+    >
+      {pending ? "…" : `Alle ${count} fehlgeschlagenen erneut versuchen`}
+    </button>
+  );
 }
 
 function DeleteItemButton({ id, topic }: { id: string; topic: string }) {
@@ -55,6 +113,7 @@ export function PipelineView() {
   const [items, setItems] = useState<PipelineItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const pollRef = useRef<() => Promise<void>>(async () => {});
 
   useEffect(() => {
     let cancelled = false;
@@ -74,6 +133,7 @@ export function PipelineView() {
       }
     }
 
+    pollRef.current = poll;
     poll();
     const interval = setInterval(poll, POLL_INTERVAL_MS);
     return () => {
@@ -85,6 +145,7 @@ export function PipelineView() {
   const active = items.filter((i) => i.currentStep);
   const waiting = items.filter((i) => !i.currentStep && i.status === "ready_for_review");
   const rest = items.filter((i) => !i.currentStep && i.status !== "ready_for_review");
+  const failed = rest.filter((i) => i.status === "failed");
 
   return (
     <div className="flex flex-col gap-8">
@@ -172,17 +233,26 @@ export function PipelineView() {
       </section>
 
       <section className="space-y-3">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <h2 className="text-label-sm text-ink-muted uppercase tracking-wider">Warteschlange &amp; Abgeschlossen</h2>
           <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-surface-card border border-border-subtle text-mono-data text-primary">
             {rest.length}
           </span>
+          {failed.length > 1 ? (
+            <div className="ml-auto">
+              <RetryAllFailedButton count={failed.length} onRetried={() => pollRef.current()} />
+            </div>
+          ) : null}
         </div>
         <div className="flex flex-col gap-1.5">
           {rest.map((item) => (
             <div
               key={item.id}
-              className="flex items-center justify-between gap-3 rounded-lg border border-border-subtle bg-surface-card px-4 py-2.5"
+              className={`flex items-center justify-between gap-3 rounded-lg border px-4 py-2.5 ${
+                item.status === "failed"
+                  ? "border-agent-terminating/30 bg-agent-terminating/5"
+                  : "border-border-subtle bg-surface-card"
+              }`}
             >
               <div className="min-w-0 flex-1">
                 <p className="text-body-md text-primary truncate">{item.topic}</p>
@@ -190,11 +260,17 @@ export function PipelineView() {
                   {STATUS_LABELS[item.status] ?? item.status}
                   {item.qaRetryCount > 0 ? ` · ${item.qaRetryCount} QA-Retry(s)` : ""}
                 </p>
+                {item.status === "failed" && item.lastError ? (
+                  <p className="text-mono-data text-agent-terminating truncate">{item.lastError}</p>
+                ) : null}
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <Link href={`/review/${item.id}`} className="text-mono-data text-primary underline hover:text-ink-muted">
                   ansehen
                 </Link>
+                {item.status === "failed" ? (
+                  <RetryItemButton id={item.id} onRetried={() => pollRef.current()} />
+                ) : null}
                 <DeleteItemButton id={item.id} topic={item.topic} />
               </div>
             </div>

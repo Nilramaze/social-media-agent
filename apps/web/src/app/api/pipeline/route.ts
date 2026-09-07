@@ -12,6 +12,7 @@ export async function GET() {
       format: contentItems.format,
       qaRetryCount: contentItems.qaRetryCount,
       scheduledFor: contentItems.scheduledFor,
+      lastError: contentItems.lastError,
       topic: contentBriefs.topic,
       campaignId: campaigns.id,
       campaignGoal: campaigns.goalText,

@@ -30,3 +30,17 @@ export async function enqueueProductionRun(
     removeOnFail: 100,
   });
 }
+
+/**
+ * Re-runs a failed item. BullMQ dedupes `add()` by jobId and a failed job
+ * with `removeOnFail: 100` sticks around, so a plain enqueue would silently
+ * no-op - the old job has to be removed first. The production graph resumes
+ * from its last LangGraph checkpoint (same thread_id), so already-completed
+ * nodes (research/content/voice, say) don't redo their work.
+ */
+export async function retryProductionRun(contentItemId: string): Promise<void> {
+  const queue = getProductionQueue();
+  const existing = await queue.getJob(`production-${contentItemId}`);
+  if (existing) await existing.remove();
+  await enqueueProductionRun({ contentItemId });
+}

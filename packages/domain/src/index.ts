@@ -13,6 +13,7 @@ export * from "./production/qa";
 export * from "./production/approval";
 export * from "./production/step";
 export * from "./production/schedule";
+export * from "./production/retry";
 export * from "./deletion";
 export * from "./publish/run-publish";
 export * from "./analytics/schema";
