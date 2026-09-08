@@ -5,6 +5,8 @@ import {
   createContentItemsForBriefs,
   createContentItemsForCampaign,
   findCampaignsToReplenish,
+  getInstagramCredentials,
+  refreshInstagramTokenIfNeeded,
   runAnalyticsCycle,
   runPlanning,
   runPublish,
@@ -22,6 +24,7 @@ import {
   enqueueProductionRun,
   enqueueReplenishJob,
   getRedisConnection,
+  INSTAGRAM_TOKEN_QUEUE_NAME,
   PLANNING_QUEUE_NAME,
   planningJobSchema,
   PRODUCTION_QUEUE_NAME,
@@ -34,6 +37,7 @@ import {
   resumeGraphJobSchema,
   scheduleAnalyticsCycle,
   scheduleAutoReplenishCheck,
+  scheduleInstagramTokenRefresh,
 } from "@sma/queue";
 import { Worker } from "bullmq";
 import { compileProductionGraph } from "./graph/production-graph";
@@ -193,10 +197,13 @@ const publishWorker = new Worker(
   async (job) => {
     const { contentItemId } = publishJobSchema.parse(job.data);
     console.log(`[worker] publishing content item ${contentItemId}`);
-    const publish = new InstagramPublishProvider({
-      igUserId: requireEnv("INSTAGRAM_USER_ID"),
-      accessToken: requireEnv("INSTAGRAM_ACCESS_TOKEN"),
-    });
+    const creds = await getInstagramCredentials();
+    if (!creds) {
+      throw new Error(
+        "Instagram is not configured (INSTAGRAM_USER_ID / INSTAGRAM_ACCESS_TOKEN) - cannot publish",
+      );
+    }
+    const publish = new InstagramPublishProvider(creds);
     const result = await runPublish(contentItemId, { publish, storage: getStorage() });
     console.log(
       `[worker] publish ${result.skipped ? "skipped (already done)" : "done"} for ${contentItemId}: ${result.externalMediaId}`,
@@ -210,13 +217,13 @@ const analyticsWorker = new Worker(
   async () => {
     // Without Instagram credentials there is nothing to measure - skip the
     // cycle instead of failing every repeat (e.g. before the API is set up).
-    const accessToken = process.env.INSTAGRAM_ACCESS_TOKEN;
-    if (!accessToken) {
-      console.warn("[worker] analytics cycle skipped: INSTAGRAM_ACCESS_TOKEN not set");
+    const creds = await getInstagramCredentials();
+    if (!creds) {
+      console.warn("[worker] analytics cycle skipped: Instagram not configured");
       return;
     }
     console.log("[worker] running analytics cycle");
-    const analytics = new InstagramAnalyticsProvider({ accessToken });
+    const analytics = new InstagramAnalyticsProvider({ accessToken: creds.accessToken });
     const result = await runAnalyticsCycle({ analytics, llm });
     console.log(
       `[worker] analytics cycle done: ${result.itemsCollected} item(s) measured, ${result.campaignsSummarized} campaign(s) summarized`,
@@ -224,6 +231,34 @@ const analyticsWorker = new Worker(
   },
   { connection: getRedisConnection() },
 );
+
+const instagramTokenWorker = new Worker(
+  INSTAGRAM_TOKEN_QUEUE_NAME,
+  async () => {
+    const result = await refreshInstagramTokenIfNeeded();
+    switch (result.status) {
+      case "refreshed":
+        console.log(
+          `[worker] instagram token refreshed, valid until ${result.expiresAt.toISOString()}`,
+        );
+        break;
+      case "failed":
+        console.error(`[worker] instagram token refresh failed: ${result.error}`);
+        break;
+      case "skipped":
+        if (result.reason !== "not_due") {
+          console.warn(`[worker] instagram token refresh skipped: ${result.reason}`);
+        }
+        break;
+    }
+  },
+  { connection: getRedisConnection() },
+);
+
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+scheduleInstagramTokenRefresh(ONE_DAY_MS).catch((err) => {
+  console.error("[worker] failed to schedule instagram token refresh:", err);
+});
 
 const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
 scheduleAnalyticsCycle(SIX_HOURS_MS).catch((err) => {
@@ -256,6 +291,9 @@ publishWorker.on("failed", (job, err) => {
 analyticsWorker.on("failed", (job, err) => {
   console.error(`[worker] analytics job ${job?.id} failed:`, err);
 });
+instagramTokenWorker.on("failed", (job, err) => {
+  console.error(`[worker] instagram token job ${job?.id} failed:`, err);
+});
 
 process.on("SIGINT", async () => {
   console.log("[worker] shutting down");
@@ -267,6 +305,7 @@ process.on("SIGINT", async () => {
     resumeGraphWorker.close(),
     publishWorker.close(),
     analyticsWorker.close(),
+    instagramTokenWorker.close(),
   ]);
   process.exit(0);
 });

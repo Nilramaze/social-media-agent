@@ -43,6 +43,13 @@
       "when": 1788860081538,
       "tag": "0005_auto_replenish",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788889635343,
+      "tag": "0006_instagram_token_store",
+      "breakpoints": true
     }
   ]
 }

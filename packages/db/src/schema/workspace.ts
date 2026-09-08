@@ -28,6 +28,14 @@ export const socialAccounts = pgTable("social_accounts", {
   platform: text("platform", { enum: socialAccountPlatformValues }).notNull(),
   externalAccountId: text("external_account_id").notNull(),
   accessTokenRef: text("access_token_ref"),
+  // The live long-lived token. Seeded once from INSTAGRAM_ACCESS_TOKEN and
+  // then owned by the refresh job, so a rotated token survives restarts and
+  // is never overwritten by a stale env value on redeploy.
+  accessToken: text("access_token"),
+  // Null = unknown (freshly seeded from env); the refresh job resolves it.
+  accessTokenExpiresAt: timestamp("access_token_expires_at", { withTimezone: true }),
+  accessTokenRefreshedAt: timestamp("access_token_refreshed_at", { withTimezone: true }),
+  tokenError: text("token_error"),
   status: text("status", { enum: socialAccountStatusValues })
     .notNull()
     .default("active"),

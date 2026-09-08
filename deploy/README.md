@@ -127,14 +127,63 @@ Das MinIO-Volume (`minio-data`) enthaelt alle generierten Medien. Fuer ein
 Offsite-Backup `mc mirror` gegen einen externen S3-Bucket einrichten, oder
 gleich Cloudflare R2 statt MinIO nutzen (siehe unten).
 
-### Instagram-Token erneuern
+### Instagram einrichten
 
-Long-lived Tokens der Graph API laufen nach 60 Tagen ab. Neuen Token holen,
-in `.env` eintragen, dann:
+Die App nutzt die Instagram Graph API ueber Facebook-Login. Voraussetzungen:
+ein Instagram **Business- oder Creator-Account**, der mit einer
+**Facebook-Seite** verknuepft ist, und ein Facebook-Konto, das diese Seite
+verwaltet.
+
+1. **Meta-App anlegen.** Auf https://developers.facebook.com eine App
+   erstellen (Typ "Business"), dann unter "Produkte" **Instagram** hinzufuegen
+   und dort "Instagram API mit Facebook-Login" waehlen. App-ID und
+   App-Geheimcode stehen unter *Einstellungen > Allgemein* - das sind
+   `INSTAGRAM_APP_ID` und `INSTAGRAM_APP_SECRET`.
+2. **Token holen.** Im Graph API Explorer (https://developers.facebook.com/tools/explorer)
+   die App auswaehlen, bei "Berechtigungen" `instagram_basic`,
+   `instagram_content_publish`, `instagram_manage_insights`, `pages_show_list`
+   und `pages_read_engagement` anhaken, "Generate Access Token" klicken und
+   den Login mit dem Facebook-Konto durchlaufen. Den Token kopieren - das ist
+   `INSTAGRAM_ACCESS_TOKEN`. Er ist nur eine Stunde gueltig, das reicht: der
+   Worker tauscht ihn beim ersten Lauf gegen einen 60-Tage-Token.
+3. **Business-Account-ID ermitteln.** Im Explorer nacheinander abfragen:
+   `me/accounts` liefert die Seiten-ID, dann
+   `<seiten-id>?fields=instagram_business_account` liefert die ID des
+   Instagram-Accounts - das ist `INSTAGRAM_USER_ID`.
+4. Die vier Werte in `.env` eintragen und Worker neu starten:
 
 ```bash
-docker compose -f docker-compose.prod.yml up -d web worker
+docker compose -f docker-compose.prod.yml up -d worker
+docker compose -f docker-compose.prod.yml logs -f worker
+# erwartet: "[worker] instagram token refreshed, valid until ..."
 ```
+
+Solange die App im Entwicklungsmodus ist, funktioniert das nur fuer Konten,
+die in der App eine Rolle haben (Admin, Entwickler, Tester). Fuer den eigenen
+Account reicht das; ein App Review ist erst noetig, wenn fremde Konten
+angebunden werden sollen.
+
+### Token-Erneuerung
+
+Der Worker haelt den Token selbst am Leben: Der Wert aus `.env` wird beim
+ersten Lauf in die Datenbank uebernommen, danach prueft ein taeglicher Job
+das Ablaufdatum und tauscht den Token spaetestens 10 Tage vor Ablauf gegen
+einen neuen. Eine Aenderung von `INSTAGRAM_ACCESS_TOKEN` in `.env` hat ab
+dann **keine Wirkung mehr**.
+
+Der Token stirbt trotzdem, wenn das Facebook-Passwort geaendert, die
+App-Berechtigung entzogen oder die Seite entkoppelt wird. Dann taucht der
+Fehler im Worker-Log auf (`instagram token refresh failed`) und in der
+Spalte `token_error` der Tabelle `social_accounts`. Neuen Token wie oben
+holen und die gespeicherte Zeile zuruecksetzen:
+
+```bash
+docker compose -f docker-compose.prod.yml exec postgres \
+  psql -U sma -d sma -c "DELETE FROM social_accounts WHERE platform = 'instagram';"
+docker compose -f docker-compose.prod.yml up -d worker
+```
+
+Der Worker liest dann wieder den Wert aus `.env` ein.
 
 ## Varianten
 

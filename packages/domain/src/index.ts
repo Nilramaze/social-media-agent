@@ -22,5 +22,6 @@ export * from "./analytics/schema";
 export * from "./analytics/collect";
 export * from "./analytics/learnings";
 export * from "./analytics/cycle";
+export * from "./instagram/credentials";
 export * from "./testing/fake-video-renderer";
 export * from "./testing/fake-static-slide-renderer";
