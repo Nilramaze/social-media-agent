@@ -1,0 +1,23 @@
+# Reverse proxy + automatic HTTPS (Let's Encrypt) for the VPS deployment.
+# DOMAIN, BASIC_AUTH_USER and BASIC_AUTH_HASH come from the caddy service's
+# environment (see docker-compose.prod.yml / .env).
+
+# The app itself. Basic auth in front of everything, since the app has no
+# login of its own - anyone who can reach it could approve or delete content.
+{$DOMAIN} {
+	encode gzip
+
+	basic_auth {
+		{$BASIC_AUTH_USER} {$BASIC_AUTH_HASH}
+	}
+
+	reverse_proxy web:3000
+}
+
+# Object storage. Must be publicly reachable: the review page loads media
+# previews from presigned URLs, and Instagram fetches the video/image from a
+# presigned URL when publishing. The bucket stays private - a presigned URL
+# is the only way in, so no basic auth here.
+s3.{$DOMAIN} {
+	reverse_proxy minio:9000
+}
