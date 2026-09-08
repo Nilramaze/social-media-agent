@@ -63,6 +63,10 @@ eintragen:
 docker run --rm caddy:2-alpine caddy hash-password --plaintext 'dein-passwort'
 ```
 
+Den Hash in `.env` **in einfache Anfuehrungszeichen** setzen, also
+`BASIC_AUTH_HASH='$2a$14$...'`. Er enthaelt `$`-Zeichen, die Compose sonst
+als Variablen interpretiert und den Hash unbemerkt verstuemmelt.
+
 Dann `.env` mit `nano .env` durchgehen: `DOMAIN`, `POSTGRES_PASSWORD`,
 `S3_SECRET_ACCESS_KEY`, alle API-Keys, Instagram-Token.
 
