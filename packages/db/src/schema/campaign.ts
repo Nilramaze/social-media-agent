@@ -1,4 +1,4 @@
-import { boolean, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import { createdAtColumn, idColumn, workspaceIdColumn } from "./common";
 
 export const campaignStatusValues = ["draft", "active", "completed", "failed"] as const;
@@ -17,6 +17,15 @@ export const campaigns = pgTable("campaigns", {
   // logo rules, etc.) - fed into the image-generation prompts so scene/slide
   // visuals stay on-brand across the campaign's content items.
   designGuidelines: text("design_guidelines"),
+  // Auto-replenish: when enabled, the worker periodically counts how many
+  // content items are still ahead of publication (in production, in review
+  // or scheduled). With one post/day that count equals the days of coverage.
+  // Once it drops below `autoReplenishBufferDays`, the strategist plans the
+  // missing briefs against the campaign's existing pillars.
+  autoReplenish: boolean("auto_replenish").notNull().default(false),
+  autoReplenishBufferDays: integer("auto_replenish_buffer_days").notNull().default(7),
+  lastReplenishedAt: timestamp("last_replenished_at", { withTimezone: true }),
+  replenishError: text("replenish_error"),
   createdAt: createdAtColumn(),
 });
 

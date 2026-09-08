@@ -1,5 +1,6 @@
 export * from "./connection";
 export * from "./planning-queue";
+export * from "./replenish-queue";
 export * from "./production-queue";
 export * from "./resume-graph-queue";
 export * from "./publish-queue";

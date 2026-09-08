@@ -2,10 +2,13 @@ import { Command } from "@langchain/langgraph";
 import { campaigns, contentItems, db } from "@sma/db";
 import { eq } from "drizzle-orm";
 import {
+  createContentItemsForBriefs,
   createContentItemsForCampaign,
+  findCampaignsToReplenish,
   runAnalyticsCycle,
   runPlanning,
   runPublish,
+  runReplenishPlanning,
 } from "@sma/domain";
 import {
   AnthropicLLMProvider,
@@ -15,7 +18,9 @@ import {
 } from "@sma/providers";
 import {
   ANALYTICS_QUEUE_NAME,
+  AUTO_REPLENISH_QUEUE_NAME,
   enqueueProductionRun,
+  enqueueReplenishJob,
   getRedisConnection,
   PLANNING_QUEUE_NAME,
   planningJobSchema,
@@ -23,9 +28,12 @@ import {
   productionJobSchema,
   PUBLISH_QUEUE_NAME,
   publishJobSchema,
+  REPLENISH_QUEUE_NAME,
+  replenishJobSchema,
   RESUME_GRAPH_QUEUE_NAME,
   resumeGraphJobSchema,
   scheduleAnalyticsCycle,
+  scheduleAutoReplenishCheck,
 } from "@sma/queue";
 import { Worker } from "bullmq";
 import { compileProductionGraph } from "./graph/production-graph";
@@ -81,6 +89,53 @@ const planningWorker = new Worker(
         .set({ status: "failed", planningError: message })
         .where(eq(campaigns.id, campaignId));
       throw err;
+    }
+  },
+  { connection: getRedisConnection() },
+);
+
+const replenishWorker = new Worker(
+  REPLENISH_QUEUE_NAME,
+  async (job) => {
+    const { campaignId, count, trigger } = replenishJobSchema.parse(job.data);
+    console.log(`[worker] replenishing campaign ${campaignId} with ${count} brief(s) (${trigger})`);
+    try {
+      const { briefIds } = await runReplenishPlanning(campaignId, count, { llm });
+      const contentItemIds = await createContentItemsForBriefs(briefIds);
+      console.log(
+        `[worker] replenish done for campaign ${campaignId}, created ${contentItemIds.length} content item(s)`,
+      );
+      for (const contentItemId of contentItemIds) {
+        await enqueueProductionRun({ contentItemId });
+      }
+    } catch (err) {
+      // Unlike initial planning, a failed top-up must not flip the campaign
+      // to "failed" - its existing items keep running. Surface the error on
+      // the campaign row so the UI can show it next to the controls.
+      const message = err instanceof Error ? err.message : String(err);
+      await db
+        .update(campaigns)
+        .set({ replenishError: message })
+        .where(eq(campaigns.id, campaignId));
+      throw err;
+    }
+  },
+  { connection: getRedisConnection() },
+);
+
+const autoReplenishWorker = new Worker(
+  AUTO_REPLENISH_QUEUE_NAME,
+  async () => {
+    const candidates = await findCampaignsToReplenish();
+    for (const c of candidates) {
+      const queued = await enqueueReplenishJob({
+        campaignId: c.campaignId,
+        count: c.count,
+        trigger: "auto",
+      });
+      console.log(
+        `[worker] auto-replenish: campaign ${c.campaignId} has ${c.upcoming}/${c.bufferDays} day(s) covered - ${queued ? `queued ${c.count} brief(s)` : "run already in flight"}`,
+      );
     }
   },
   { connection: getRedisConnection() },
@@ -153,10 +208,15 @@ const publishWorker = new Worker(
 const analyticsWorker = new Worker(
   ANALYTICS_QUEUE_NAME,
   async () => {
+    // Without Instagram credentials there is nothing to measure - skip the
+    // cycle instead of failing every repeat (e.g. before the API is set up).
+    const accessToken = process.env.INSTAGRAM_ACCESS_TOKEN;
+    if (!accessToken) {
+      console.warn("[worker] analytics cycle skipped: INSTAGRAM_ACCESS_TOKEN not set");
+      return;
+    }
     console.log("[worker] running analytics cycle");
-    const analytics = new InstagramAnalyticsProvider({
-      accessToken: requireEnv("INSTAGRAM_ACCESS_TOKEN"),
-    });
+    const analytics = new InstagramAnalyticsProvider({ accessToken });
     const result = await runAnalyticsCycle({ analytics, llm });
     console.log(
       `[worker] analytics cycle done: ${result.itemsCollected} item(s) measured, ${result.campaignsSummarized} campaign(s) summarized`,
@@ -170,8 +230,19 @@ scheduleAnalyticsCycle(SIX_HOURS_MS).catch((err) => {
   console.error("[worker] failed to schedule analytics cycle:", err);
 });
 
+const FIFTEEN_MINUTES_MS = 15 * 60 * 1000;
+scheduleAutoReplenishCheck(FIFTEEN_MINUTES_MS).catch((err) => {
+  console.error("[worker] failed to schedule auto-replenish check:", err);
+});
+
 planningWorker.on("failed", (job, err) => {
   console.error(`[worker] planning job ${job?.id} failed:`, err);
+});
+replenishWorker.on("failed", (job, err) => {
+  console.error(`[worker] replenish job ${job?.id} failed:`, err);
+});
+autoReplenishWorker.on("failed", (job, err) => {
+  console.error(`[worker] auto-replenish check ${job?.id} failed:`, err);
 });
 productionWorker.on("failed", (job, err) => {
   console.error(`[worker] production job ${job?.id} failed:`, err);
@@ -190,6 +261,8 @@ process.on("SIGINT", async () => {
   console.log("[worker] shutting down");
   await Promise.all([
     planningWorker.close(),
+    replenishWorker.close(),
+    autoReplenishWorker.close(),
     productionWorker.close(),
     resumeGraphWorker.close(),
     publishWorker.close(),

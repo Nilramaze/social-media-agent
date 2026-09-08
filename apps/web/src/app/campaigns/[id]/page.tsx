@@ -5,12 +5,14 @@ import {
   contentPillars,
   db,
 } from "@sma/db";
+import { countUpcomingContentItems } from "@sma/domain";
 import { eq } from "drizzle-orm";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { STATUS_LABELS, STEP_LABELS } from "@/lib/labels";
 import { DeleteButton } from "@/components/delete-button";
 import { DesignGuidelinesEditor } from "./design-guidelines-editor";
+import { ReplenishControls } from "./replenish-controls";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +38,9 @@ async function getCampaignDetail(id: string) {
     items.push({ brief, item: item ?? null });
   }
 
-  return { campaign, pillars, items };
+  const upcoming = await countUpcomingContentItems(id);
+
+  return { campaign, pillars, items, upcoming };
 }
 
 export default async function CampaignDetailPage({
@@ -48,7 +52,7 @@ export default async function CampaignDetailPage({
   const data = await getCampaignDetail(id);
   if (!data) notFound();
 
-  const { campaign, pillars, items } = data;
+  const { campaign, pillars, items, upcoming } = data;
 
   return (
     <div className="w-full max-w-7xl mx-auto px-8 py-10 space-y-10">
@@ -103,6 +107,16 @@ export default async function CampaignDetailPage({
           </div>
         </section>
       )}
+
+      <ReplenishControls
+        campaignId={campaign.id}
+        upcoming={upcoming}
+        autoReplenish={campaign.autoReplenish}
+        bufferDays={campaign.autoReplenishBufferDays}
+        lastReplenishedAt={campaign.lastReplenishedAt?.toISOString() ?? null}
+        replenishError={campaign.replenishError}
+        disabled={campaign.status !== "active" || pillars.length === 0}
+      />
 
       <section className="space-y-3">
         <h2 className="text-label-sm text-ink-muted uppercase tracking-wider">

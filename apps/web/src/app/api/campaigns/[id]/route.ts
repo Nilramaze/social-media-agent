@@ -5,9 +5,14 @@ import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-const updateCampaignSchema = z.object({
-  designGuidelines: z.string().max(20_000).nullable(),
-});
+const updateCampaignSchema = z
+  .object({
+    designGuidelines: z.string().max(20_000).nullable(),
+    autoReplenish: z.boolean(),
+    autoReplenishBufferDays: z.number().int().min(1).max(30),
+  })
+  .partial()
+  .refine((v) => Object.keys(v).length > 0, { message: "Nothing to update" });
 
 export async function GET(
   _request: Request,
@@ -46,7 +51,7 @@ export async function PATCH(
 
   const [campaign] = await db
     .update(campaigns)
-    .set({ designGuidelines: parsed.data.designGuidelines })
+    .set(parsed.data)
     .where(eq(campaigns.id, id))
     .returning();
   if (!campaign) {

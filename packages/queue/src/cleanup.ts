@@ -2,6 +2,7 @@ import type { Queue } from "bullmq";
 import { getPlanningQueue } from "./planning-queue";
 import { getProductionQueue } from "./production-queue";
 import { getPublishQueue } from "./publish-queue";
+import { getReplenishQueue, replenishJobId } from "./replenish-queue";
 import { getResumeGraphQueue } from "./resume-graph-queue";
 
 async function removeJobIfExists(queue: Queue, jobId: string): Promise<void> {
@@ -28,4 +29,5 @@ export async function removeContentItemJobs(contentItemId: string): Promise<void
 
 export async function removeCampaignJobs(campaignId: string): Promise<void> {
   await removeJobIfExists(getPlanningQueue(), `planning-${campaignId}`);
+  await removeJobIfExists(getReplenishQueue(), replenishJobId(campaignId));
 }
