@@ -1,7 +1,10 @@
-import { boolean, integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, integer, jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import { createdAtColumn, idColumn, workspaceIdColumn } from "./common";
 
 export const campaignStatusValues = ["draft", "active", "completed", "failed"] as const;
+
+export const contentBriefFormatValues = ["reel", "carousel", "post"] as const;
+export type ContentBriefFormat = (typeof contentBriefFormatValues)[number];
 
 export const campaigns = pgTable("campaigns", {
   id: idColumn(),
@@ -17,6 +20,26 @@ export const campaigns = pgTable("campaigns", {
   // logo rules, etc.) - fed into the image-generation prompts so scene/slide
   // visuals stay on-brand across the campaign's content items.
   designGuidelines: text("design_guidelines"),
+  // Guardrails. `goalText` above is the campaign's original prompt and stays
+  // untouched for the campaign's whole life - it is the single source of truth
+  // for topic, industry, product and audience, and every downstream agent
+  // (strategist, research, content, visual director, QA) gets it verbatim.
+  // `extraInstructions` is where follow-up direction lands ("mehr zu
+  // Wasserwerten, weniger Technik") without rewriting the original prompt.
+  extraInstructions: text("extra_instructions"),
+  // Terms that must never appear in this campaign's copy. Checked
+  // deterministically in QA next to the buzzword blocklist - that is what
+  // catches topic bleed from other campaigns ("KI", "Webagentur", ...) even
+  // when the LLM judge waves it through.
+  bannedTerms: jsonb("banned_terms").notNull().default([]).$type<string[]>(),
+  // Which content formats this campaign may produce. The strategist's output
+  // schema is built from this list, so a deselected format is structurally
+  // unavailable rather than merely discouraged. Never empty - see
+  // normalizeCampaignFormats.
+  allowedFormats: jsonb("allowed_formats")
+    .notNull()
+    .default([...contentBriefFormatValues])
+    .$type<ContentBriefFormat[]>(),
   // Auto-replenish: when enabled, the worker periodically counts how many
   // content items are still ahead of publication (in production, in review
   // or scheduled). With one post/day that count equals the days of coverage.
@@ -39,7 +62,6 @@ export const contentPillars = pgTable("content_pillars", {
   createdAt: createdAtColumn(),
 });
 
-export const contentBriefFormatValues = ["reel", "carousel", "post"] as const;
 export const contentBriefStatusValues = [
   "planned",
   "in_production",

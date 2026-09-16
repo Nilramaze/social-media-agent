@@ -10,6 +10,11 @@ import {
 import type { LLMProvider } from "@sma/providers";
 import { eq } from "drizzle-orm";
 import { NODE_MODELS } from "../model-config";
+import {
+  buildGuardrailBlock,
+  findBannedTerms,
+  getCampaignGuardrailsForItem,
+} from "./campaign-context";
 import { contentOutputSchema, qaJudgeOutputSchema } from "./schema";
 
 export const QA_RETRY_LIMIT = 3;
@@ -31,9 +36,11 @@ function findBuzzwords(text: string): string[] {
   return BUZZWORD_BLOCKLIST.filter((word) => lower.includes(word));
 }
 
-const QA_JUDGE_SYSTEM_PROMPT = `Du bist der QA/Brand-Judge einer Social-Media-Marketing-Pipeline fuer eine kleine KI-/Web-Agentur.
-Du prüfst fachliche Plausibilitaet, Tonalitaet, schwache Hooks, CTA und Brand Guidelines. Sei streng, aber fair.
-Gib "fail" nur bei echten Problemen (falsche Behauptungen, generischer/schwacher Hook, Ton passt nicht zur Brand Voice, fehlender oder unklarer CTA). Gib konkretes, umsetzbares Feedback.`;
+const QA_JUDGE_SYSTEM_PROMPT = `Du bist der QA/Brand-Judge einer Social-Media-Marketing-Pipeline.
+Du pruefst in dieser Reihenfolge:
+1. Kampagnen-Scope (Ausschlusskriterium): Gehoeren Hook, Skript, Caption, CTA UND alle Hashtags eindeutig zum Kampagnen-Briefing? Setze scopeViolation=true und verdict="fail", sobald ein fremdes Thema, eine fremde Branche oder eine fremde Zielgruppe auftaucht - auch dann, wenn der Text nur als Analogie oder Ueberleitung dorthin fuehrt ("... genau wie in deinem Business ...") und selbst wenn der Text fuer sich genommen gut geschrieben ist. Ein einziger fremder Hashtag reicht fuer scopeViolation=true.
+2. Fachliche Plausibilitaet, Tonalitaet, Hook-Staerke, CTA und Brand Guidelines. Sei streng, aber fair.
+Gib "fail" nur bei echten Problemen (Scope-Verletzung, falsche Behauptungen, generischer/schwacher Hook, Ton passt nicht zur Brand Voice, fehlender oder unklarer CTA). Gib konkretes, umsetzbares Feedback; bei scopeViolation=true benenne genau, welche Stelle das Kampagnenthema verlaesst.`;
 
 export interface RunQADeps {
   llm: LLMProvider;
@@ -44,6 +51,8 @@ export interface RunQAResult {
   verdict: "pass" | "fail";
   needsHumanReview: boolean;
   category: "script" | "visual" | "both" | null;
+  /** The content drifted out of its campaign's briefing. */
+  scopeViolation: boolean;
 }
 
 export async function runQA(
@@ -80,6 +89,11 @@ export async function runQA(
     throw new Error(`No brand profile for workspace: ${item.workspaceId}`);
   }
 
+  const guardrails = await getCampaignGuardrailsForItem(item.id, { db });
+  if (!guardrails) {
+    throw new Error(`No campaign for content item: ${item.id}`);
+  }
+
   const schemaCheck = contentOutputSchema.safeParse({
     hook: version.hook,
     script: version.script,
@@ -87,23 +101,41 @@ export async function runQA(
     cta: version.cta,
     hashtags: version.hashtags,
   });
+  // Hashtags are included here (unlike the buzzword scan): topic bleed from
+  // another campaign shows up in the hashtags first.
+  const allCopy = [
+    version.hook,
+    version.script,
+    version.caption,
+    version.cta,
+    ...version.hashtags,
+  ].join(" ");
   const buzzwordHits = findBuzzwords(
     [version.hook, version.script, version.caption].join(" "),
   );
+  const bannedHits = findBannedTerms(allCopy, guardrails.bannedTerms);
 
   const structuralErrors = [
     ...(schemaCheck.success
       ? []
       : schemaCheck.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`)),
     ...buzzwordHits.map((w) => `Buzzword gefunden: "${w}"`),
+    ...bannedHits.map(
+      (w) =>
+        `Fuer diese Kampagne gesperrter Begriff gefunden: "${w}" - Thema gehoert nicht zum Kampagnen-Briefing.`,
+    ),
   ];
 
   let verdict: "pass" | "fail" = structuralErrors.length > 0 ? "fail" : "pass";
   let feedback = structuralErrors.join("; ");
   let category: "script" | "visual" | "both" | null = verdict === "fail" ? "script" : null;
 
+  let scopeViolation = bannedHits.length > 0;
+
   if (verdict === "pass") {
-    const prompt = `Pruefe den folgenden Content:
+    const prompt = `${buildGuardrailBlock(guardrails)}
+
+Pruefe den folgenden Content:
 
 Hook: ${version.hook}
 Skript: ${version.script}
@@ -111,9 +143,10 @@ Caption: ${version.caption}
 CTA: ${version.cta}
 Hashtags: ${version.hashtags.join(", ")}
 
+Stil-Referenz des Workspace (nur Tonalitaet, NICHT Themenauswahl):
 Brand Voice: ${brandProfile.voice}
 Brand Guidelines: ${brandProfile.guidelines}
-Zielgruppe: ${brandProfile.targetAudience}`;
+Uebliche Workspace-Zielgruppe: ${brandProfile.targetAudience} (nur relevant, soweit sie zum Kampagnen-Briefing passt)`;
 
     const judged = await deps.llm.generateStructured({
       schema: qaJudgeOutputSchema,
@@ -121,7 +154,10 @@ Zielgruppe: ${brandProfile.targetAudience}`;
       prompt,
       model: NODE_MODELS.qaJudge,
     });
-    verdict = judged.verdict;
+    // A scope violation fails the item even if the judge's own verdict is
+    // lenient - staying inside the campaign is not a judgement call.
+    scopeViolation = judged.scopeViolation;
+    verdict = judged.scopeViolation ? "fail" : judged.verdict;
     feedback = judged.feedback;
     category = verdict === "fail" ? "script" : null;
   }
@@ -143,6 +179,10 @@ Zielgruppe: ${brandProfile.targetAudience}`;
     }
   }
 
+  if (scopeViolation) {
+    feedback = `SCOPE-VERLETZUNG: Der Content verlaesst das Kampagnen-Briefing. Schreibe ihn vollstaendig neu, ausschliesslich zum Kampagnenthema - inklusive Hashtags. ${feedback}`;
+  }
+
   await db.insert(qaResults).values({
     workspaceId: item.workspaceId,
     contentItemId: item.id,
@@ -158,7 +198,7 @@ Zielgruppe: ${brandProfile.targetAudience}`;
       .update(contentItems)
       .set({ status: "ready_for_review" })
       .where(eq(contentItems.id, item.id));
-    return { verdict: "pass", needsHumanReview: false, category: null };
+    return { verdict: "pass", needsHumanReview: false, category: null, scopeViolation: false };
   }
 
   const newRetryCount = item.qaRetryCount + 1;
@@ -171,5 +211,5 @@ Zielgruppe: ${brandProfile.targetAudience}`;
     })
     .where(eq(contentItems.id, item.id));
 
-  return { verdict: "fail", needsHumanReview, category };
+  return { verdict: "fail", needsHumanReview, category, scopeViolation };
 }

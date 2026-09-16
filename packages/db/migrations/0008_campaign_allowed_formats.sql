@@ -1,0 +1,1 @@
+ALTER TABLE "campaigns" ADD COLUMN "allowed_formats" jsonb DEFAULT '["reel","carousel","post"]'::jsonb NOT NULL;

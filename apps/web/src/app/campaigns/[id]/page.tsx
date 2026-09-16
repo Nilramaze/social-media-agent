@@ -12,6 +12,7 @@ import { notFound } from "next/navigation";
 import { STATUS_LABELS, STEP_LABELS } from "@/lib/labels";
 import { DeleteButton } from "@/components/delete-button";
 import { DesignGuidelinesEditor } from "./design-guidelines-editor";
+import { GuardrailsEditor } from "./guardrails-editor";
 import { ReplenishControls } from "./replenish-controls";
 
 export const dynamic = "force-dynamic";
@@ -83,6 +84,14 @@ export default async function CampaignDetailPage({
           label="Kampagne loeschen"
         />
       </div>
+
+      <GuardrailsEditor
+        campaignId={campaign.id}
+        goalText={campaign.goalText}
+        initialExtraInstructions={campaign.extraInstructions}
+        initialBannedTerms={campaign.bannedTerms}
+        initialAllowedFormats={campaign.allowedFormats}
+      />
 
       <DesignGuidelinesEditor campaignId={campaign.id} initialValue={campaign.designGuidelines} />
 

@@ -10,6 +10,7 @@ export * from "./production/content";
 export * from "./production/voice";
 export * from "./production/creative";
 export * from "./production/creative-static";
+export * from "./production/campaign-context";
 export * from "./production/design-guidelines";
 export * from "./production/qa";
 export * from "./production/approval";

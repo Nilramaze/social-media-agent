@@ -14,6 +14,7 @@ import { readFile } from "node:fs/promises";
 import type { ImageProvider, LLMProvider, StorageProvider } from "@sma/providers";
 import { eq } from "drizzle-orm";
 import { NODE_MODELS } from "../model-config";
+import { buildGuardrailBlock, getCampaignGuardrailsForBrief } from "./campaign-context";
 import { getDesignGuidelines } from "./design-guidelines";
 import { staticSlidesBriefSchema } from "./schema";
 
@@ -23,7 +24,8 @@ export interface StaticSlideRenderer {
 
 const defaultRenderer: StaticSlideRenderer = { render: renderStillImage };
 
-const STATIC_BRIEF_SYSTEM_PROMPT = `Du bist der Visual Director einer Social-Media-Marketing-Pipeline fuer eine kleine KI-/Web-Agentur.
+const STATIC_BRIEF_SYSTEM_PROMPT = `Du bist der Visual Director einer Social-Media-Marketing-Pipeline.
+Slide-Texte und Bildmotive muessen aus der Lebens- und Arbeitswelt des Kampagnen-Briefings kommen; generische Bueromotive ohne Bezug zum Kampagnenthema sind nicht erlaubt.
 Du zerlegst einen Post/Carousel-Text in einzelne Bild-Slides.
 Fuer "post" erzeugst du GENAU 1 Slide. Fuer "carousel" erzeugst du 4-6 Slides, die die Story in logischen Schritten erzaehlen (z.B. Problem -> Loesung -> Ergebnis -> CTA).
 Jeder Slide braucht: einen kurzen Text (max. 120 Zeichen, der als Overlay auf dem Bild angezeigt wird) und einen bildhaften Prompt fuer eine Text-zu-Bild-KI (auf Englisch, fotorealistisch oder sauberes flaches Illustrations-Design, KEIN Text/keine Buchstaben im Bild selbst, der Text kommt als separates Overlay).`;
@@ -73,11 +75,16 @@ export async function runCreativeStatic(
       : "Erzeuge 4-6 Slides fuer ein Carousel.";
 
   const designGuidelines = await getDesignGuidelines(item.briefId, { db });
+  const guardrails = await getCampaignGuardrailsForBrief(item.briefId, { db });
+  if (!guardrails) {
+    throw new Error(`No campaign for brief: ${item.briefId}`);
+  }
 
   const brief = await deps.llm.generateStructured({
     schema: staticSlidesBriefSchema,
     system: STATIC_BRIEF_SYSTEM_PROMPT,
     prompt: [
+      buildGuardrailBlock(guardrails),
       `Format: ${input.format}`,
       `Hook: ${version.hook}`,
       `Skript: ${version.script}`,

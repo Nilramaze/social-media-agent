@@ -20,6 +20,7 @@ import {
 import type { ImageProvider, LLMProvider, StorageProvider } from "@sma/providers";
 import { eq } from "drizzle-orm";
 import { NODE_MODELS } from "../model-config";
+import { buildGuardrailBlock, getCampaignGuardrailsForBrief } from "./campaign-context";
 import { getDesignGuidelines } from "./design-guidelines";
 import { reelVisualBriefSchema } from "./schema";
 import type { Caption } from "./voice";
@@ -30,10 +31,11 @@ export interface VideoRenderer {
 
 const defaultRenderer: VideoRenderer = { render: renderReelVideo };
 
-const VISUAL_BRIEF_SYSTEM_PROMPT = `Du bist der Visual Director einer Social-Media-Marketing-Pipeline fuer eine kleine KI-/Web-Agentur.
+const VISUAL_BRIEF_SYSTEM_PROMPT = `Du bist der Visual Director einer Social-Media-Marketing-Pipeline.
 Du zerlegst ein Reel-Skript in 3-5 visuelle Szenen fuer den Bildhintergrund des Videos.
 Jede Szene braucht einen konkreten, bildhaften Prompt fuer eine Text-zu-Bild-KI (auf Englisch, fotorealistisch oder sauberes flaches Illustrations-Design, KEIN Text/keine Buchstaben im Bild).
-Die Szenen sollen die Erzaehlung visuell begleiten: z.B. erst das Problem zeigen (z.B. ein volles E-Mail-Postfach, gestresste Person am Schreibtisch), dann die Loesung/das Ergebnis (z.B. ein aufgeraeumtes Dashboard mit erledigten Aufgaben).`;
+Die Szenen sollen die Erzaehlung visuell begleiten: erst das Problem, dann die Loesung/das Ergebnis.
+Die Motive muessen aus der Lebens- und Arbeitswelt des Kampagnen-Briefings kommen. Generische Bueromotive (Laptop, Dashboard, Meeting), die nichts mit dem Kampagnenthema zu tun haben, sind nicht erlaubt.`;
 
 export interface RunCreativeInput {
   audioStorageKey: string;
@@ -80,11 +82,16 @@ export async function runCreative(
   }
 
   const designGuidelines = await getDesignGuidelines(item.briefId, { db });
+  const guardrails = await getCampaignGuardrailsForBrief(item.briefId, { db });
+  if (!guardrails) {
+    throw new Error(`No campaign for brief: ${item.briefId}`);
+  }
 
   const visualBrief = await deps.llm.generateStructured({
     schema: reelVisualBriefSchema,
     system: VISUAL_BRIEF_SYSTEM_PROMPT,
     prompt: [
+      buildGuardrailBlock(guardrails),
       `Hook: ${version.hook}`,
       `Skript: ${version.script}`,
       designGuidelines ? `\nDesign-Richtlinien der Kampagne (unbedingt einhalten):\n${designGuidelines}` : "",

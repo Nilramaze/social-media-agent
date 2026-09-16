@@ -10,8 +10,12 @@ import {
 } from "@sma/db";
 import type { LLMProvider } from "@sma/providers";
 import { NODE_MODELS } from "../model-config";
+import {
+  normalizeCampaignFormats,
+  toCampaignGuardrails,
+} from "../production/campaign-context";
 import { buildStrategistPrompt, STRATEGIST_SYSTEM_PROMPT } from "./prompt";
-import { strategistOutputSchema } from "./schema";
+import { buildStrategistOutputSchema } from "./schema";
 
 export interface RunPlanningDeps {
   llm: LLMProvider;
@@ -47,14 +51,17 @@ export async function runPlanning(
     .orderBy(desc(learnings.createdAt))
     .limit(10);
 
+  const allowedFormats = normalizeCampaignFormats(campaign.allowedFormats);
+
   const prompt = buildStrategistPrompt({
-    goalText: campaign.goalText,
+    guardrails: toCampaignGuardrails(campaign),
+    allowedFormats,
     brandProfile,
     recentLearnings,
   });
 
   const output = await deps.llm.generateStructured({
-    schema: strategistOutputSchema,
+    schema: buildStrategistOutputSchema(allowedFormats),
     system: STRATEGIST_SYSTEM_PROMPT,
     prompt,
     model: NODE_MODELS.strategist,
@@ -75,6 +82,9 @@ export async function runPlanning(
   }
 
   for (const brief of output.briefs) {
+    // The output schema already excludes disallowed formats; this also covers
+    // a campaign whose format set shrank while a job was in flight.
+    if (!allowedFormats.includes(brief.format)) continue;
     await db.insert(contentBriefs).values({
       workspaceId: campaign.workspaceId,
       campaignId: campaign.id,

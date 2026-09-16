@@ -9,10 +9,11 @@ import type { LLMProvider, SearchProvider, ToolSpec } from "@sma/providers";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { NODE_MODELS } from "../model-config";
+import { buildGuardrailBlock, getCampaignGuardrailsForBrief } from "./campaign-context";
 import { researchOutputSchema } from "./schema";
 
-const RESEARCH_SYSTEM_PROMPT = `Du bist der Research-Agent einer Social-Media-Marketing-Pipeline fuer eine kleine KI-/Web-Agentur.
-Du recherchierst aktuelle Themen, Trends, Zielgruppen-Probleme und KI-/Automatisierungs-Use-Cases fuer kleine Unternehmen.
+const RESEARCH_SYSTEM_PROMPT = `Du bist der Research-Agent einer Social-Media-Marketing-Pipeline.
+Du recherchierst Fakten, Trends und Zielgruppen-Probleme - immer streng innerhalb des Kampagnen-Briefings im Prompt. Suchanfragen, die das Kampagnenthema verlassen, stellst du nicht.
 Nutze das "search"-Tool so oft wie noetig (aber sparsam), um belastbare, aktuelle Informationen zu sammeln.
 Rufe erst "submit_findings" auf, wenn du genug recherchiert hast. Jede Aussage in der Zusammenfassung muss durch mindestens eine der angegebenen Quellen gedeckt sein.`;
 
@@ -52,8 +53,16 @@ export async function runResearch(
     },
   };
 
-  const prompt = `Recherchiere zum Thema: "${brief.topic}" (Format: ${brief.format}).
-Ziel: Material fuer einen Social-Media-Post fuer kleine Unternehmen im Bereich KI-Automatisierung sammeln.`;
+  const guardrails = await getCampaignGuardrailsForBrief(brief.id, { db });
+  if (!guardrails) {
+    throw new Error(`No campaign for brief: ${brief.id}`);
+  }
+
+  const prompt = `${buildGuardrailBlock(guardrails)}
+
+Recherchiere zum Thema: "${brief.topic}" (Format: ${brief.format}).
+Ziel: belastbares Material fuer einen Social-Media-Post sammeln, der auf das Kampagnen-Briefing oben einzahlt.
+Deine Zusammenfassung darf nur Material enthalten, das direkt zum Kampagnen-Briefing gehoert.`;
 
   const output = await deps.llm.runAgenticStructured({
     system: RESEARCH_SYSTEM_PROMPT,

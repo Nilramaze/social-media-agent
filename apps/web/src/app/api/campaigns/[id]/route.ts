@@ -1,4 +1,11 @@
-import { campaigns, contentBriefs, contentItems, contentPillars, db } from "@sma/db";
+import {
+  campaigns,
+  contentBriefFormatValues,
+  contentBriefs,
+  contentItems,
+  contentPillars,
+  db,
+} from "@sma/db";
 import { deleteCampaign } from "@sma/domain";
 import { removeCampaignJobs, removeContentItemJobs } from "@sma/queue";
 import { eq } from "drizzle-orm";
@@ -8,6 +15,13 @@ import { z } from "zod";
 const updateCampaignSchema = z
   .object({
     designGuidelines: z.string().max(20_000).nullable(),
+    // Follow-up direction for a running campaign. goalText is deliberately
+    // NOT patchable - the original prompt stays the campaign's anchor.
+    extraInstructions: z.string().max(5_000).nullable(),
+    bannedTerms: z.array(z.string().min(1).max(60)).max(50),
+    // Applies to briefs planned from here on; already-planned briefs keep
+    // the format they were created with.
+    allowedFormats: z.array(z.enum(contentBriefFormatValues)).min(1),
     autoReplenish: z.boolean(),
     autoReplenishBufferDays: z.number().int().min(1).max(30),
   })
@@ -51,7 +65,12 @@ export async function PATCH(
 
   const [campaign] = await db
     .update(campaigns)
-    .set(parsed.data)
+    .set({
+      ...parsed.data,
+      ...(parsed.data.allowedFormats
+        ? { allowedFormats: Array.from(new Set(parsed.data.allowedFormats)) }
+        : {}),
+    })
     .where(eq(campaigns.id, id))
     .returning();
   if (!campaign) {

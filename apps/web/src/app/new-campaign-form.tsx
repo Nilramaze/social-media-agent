@@ -2,11 +2,14 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { CONTENT_FORMATS, FormatPicker, type ContentFormat } from "@/components/format-picker";
 
 export function NewCampaignForm() {
   const router = useRouter();
   const [goalText, setGoalText] = useState("");
   const [designGuidelines, setDesignGuidelines] = useState("");
+  const [bannedTermsRaw, setBannedTermsRaw] = useState("");
+  const [allowedFormats, setAllowedFormats] = useState<ContentFormat[]>([...CONTENT_FORMATS]);
   const [designFileName, setDesignFileName] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -19,6 +22,15 @@ export function NewCampaignForm() {
     setDesignFileName(file.name);
   }
 
+  const bannedTerms = Array.from(
+    new Set(
+      bannedTermsRaw
+        .split(/[,\n]/)
+        .map((t) => t.trim())
+        .filter((t) => t.length > 0),
+    ),
+  );
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setPending(true);
@@ -30,6 +42,8 @@ export function NewCampaignForm() {
         body: JSON.stringify({
           goalText,
           ...(designGuidelines ? { designGuidelines } : {}),
+          ...(bannedTerms.length > 0 ? { bannedTerms } : {}),
+          allowedFormats,
         }),
       });
       const body = await res.json();
@@ -60,6 +74,45 @@ export function NewCampaignForm() {
         value={goalText}
         onChange={(e) => setGoalText(e.target.value)}
       />
+      <p className="text-mono-data text-ink-muted -mt-2">
+        Dieser Text ist das bindende Briefing der Kampagne: Er geht woertlich an jeden Agenten und
+        wird spaeter nicht mehr veraendert. Nachtraegliche Praezisierungen lieferst du auf der
+        Kampagnenseite nach.
+      </p>
+      <div className="flex items-center justify-between">
+        <span className="font-sans text-label-md text-on-surface-variant uppercase tracking-wider">
+          Content-Formate
+        </span>
+        <span className="font-sans text-mono-data text-ink-muted">
+          {allowedFormats.length} von {CONTENT_FORMATS.length}
+        </span>
+      </div>
+      <FormatPicker idPrefix="new-campaign" value={allowedFormats} onChange={setAllowedFormats} />
+      <p className="text-mono-data text-ink-muted -mt-2">
+        Der Stratege darf nur diese Formate einplanen - abgewaehlte Formate koennen gar nicht erst
+        entstehen. Spaeter auf der Kampagnenseite aenderbar.
+      </p>
+      <div className="flex items-center justify-between">
+        <label
+          htmlFor="banned-terms"
+          className="font-sans text-label-md text-on-surface-variant uppercase tracking-wider"
+        >
+          Verbotene Begriffe
+        </label>
+        <span className="font-sans text-mono-data text-ink-muted">Optional</span>
+      </div>
+      <input
+        id="banned-terms"
+        type="text"
+        className="w-full bg-surface-bone p-4 rounded-lg text-primary text-body-md placeholder:text-ink-muted/50 border border-border-subtle focus:outline-none focus:ring-1 focus:ring-ink-graphite transition-all"
+        placeholder="kommagetrennt, z.B. KI, Webagentur, Beratung"
+        value={bannedTermsRaw}
+        onChange={(e) => setBannedTermsRaw(e.target.value)}
+      />
+      <p className="text-mono-data text-ink-muted -mt-2">
+        Harte Sperre in der QA - Content mit einem dieser Begriffe in Text, CTA oder Hashtags wird
+        automatisch neu geschrieben.
+      </p>
       <div className="flex items-center justify-between">
         <label htmlFor="design-file" className="font-sans text-label-md text-on-surface-variant uppercase tracking-wider">
           Design-Richtlinien (design.md)

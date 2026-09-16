@@ -12,12 +12,14 @@ import {
 import type { LLMProvider } from "@sma/providers";
 import { desc, eq } from "drizzle-orm";
 import { NODE_MODELS } from "../model-config";
+import { buildGuardrailBlock, getCampaignGuardrailsForBrief } from "./campaign-context";
 import { contentOutputSchema } from "./schema";
 
-const CONTENT_SYSTEM_PROMPT = `Du bist der Content Agent einer Social-Media-Marketing-Pipeline fuer eine kleine KI-/Web-Agentur.
-Du entwickelst Reel-Ideen, Hooks, Skripte, Captions und CTAs.
-Stil: direkt, verstaendlich, technisch kompetent, fuer Inhaber:innen kleiner Unternehmen nachvollziehbar.
-Keine Buzzword-Flut, keine unseriösen KI-Versprechen. Konkrete Probleme und Loesungen statt Hype.
+const CONTENT_SYSTEM_PROMPT = `Du bist der Content Agent einer Social-Media-Marketing-Pipeline.
+Du entwickelst Reel-Ideen, Hooks, Skripte, Captions und CTAs - immer fuer genau eine Kampagne.
+Das Kampagnen-Briefing im Prompt legt Thema, Branche, Produkt und Zielgruppe fest und ist bindend; die Brand Voice liefert nur die Tonalitaet.
+Keine Buzzword-Flut, keine leeren Versprechen. Konkrete Probleme und Loesungen statt Hype.
+Auch Hashtags gehoeren zum Kampagnenthema - keine Hashtags zu fremden Branchen oder Dienstleistungen.
 Das Skript ist der gesprochene Text fuer ein 30-60 Sekunden Reel: ca. 100-150 Woerter, hoechstens 2000 Zeichen. Keine Regieanweisungen, keine Szenenbeschreibungen - nur der Text, der vorgelesen wird.`;
 
 export interface RunContentDeps {
@@ -102,18 +104,26 @@ export async function runContent(
     ? `\n\nDies ist eine Ueberarbeitung. Feedback, das du unbedingt beruecksichtigen musst:\n${revisionFeedback}`
     : "";
 
-  const prompt = `Thema: "${brief.topic}"
+  const guardrails = await getCampaignGuardrailsForBrief(brief.id, { db });
+  if (!guardrails) {
+    throw new Error(`No campaign for brief: ${brief.id}`);
+  }
+
+  const prompt = `${buildGuardrailBlock(guardrails)}
+
+Thema: "${brief.topic}"
 Format: ${item.format}
 
-Recherche-Zusammenfassung:
+Recherche-Zusammenfassung (nur verwenden, soweit sie zum Kampagnen-Briefing passt):
 ${finding.summary}
 
 Quellen:
 ${finding.sources.map((s) => `- ${s.title}: ${s.url}`).join("\n")}
 
+Stil-Referenz des Workspace (nur Tonalitaet, NICHT Themenauswahl):
 Brand Voice: ${brandProfile.voice}
 Brand Guidelines: ${brandProfile.guidelines}
-Zielgruppe: ${brandProfile.targetAudience}
+Uebliche Workspace-Zielgruppe: ${brandProfile.targetAudience} (nur relevant, soweit sie zum Kampagnen-Briefing passt)
 
 Aufgabe: Entwickle den Content fuer dieses ${item.format} (Hook, Skript, Caption, CTA, Hashtags) gemaess Schema.${revisionSection}`;
 

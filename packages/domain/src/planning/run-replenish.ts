@@ -11,8 +11,12 @@ import {
 } from "@sma/db";
 import type { LLMProvider } from "@sma/providers";
 import { NODE_MODELS } from "../model-config";
+import {
+  normalizeCampaignFormats,
+  toCampaignGuardrails,
+} from "../production/campaign-context";
 import { buildReplenishPrompt, STRATEGIST_SYSTEM_PROMPT } from "./prompt";
-import { MAX_REPLENISH_COUNT, replenishOutputSchema } from "./schema";
+import { buildReplenishOutputSchema, MAX_REPLENISH_COUNT } from "./schema";
 
 export interface RunReplenishDeps {
   llm: LLMProvider;
@@ -76,8 +80,11 @@ export async function runReplenishPlanning(
     .orderBy(desc(learnings.createdAt))
     .limit(10);
 
+  const allowedFormats = normalizeCampaignFormats(campaign.allowedFormats);
+
   const prompt = buildReplenishPrompt({
-    goalText: campaign.goalText,
+    guardrails: toCampaignGuardrails(campaign),
+    allowedFormats,
     brandProfile,
     recentLearnings,
     pillars,
@@ -86,7 +93,7 @@ export async function runReplenishPlanning(
   });
 
   const output = await deps.llm.generateStructured({
-    schema: replenishOutputSchema,
+    schema: buildReplenishOutputSchema(allowedFormats),
     system: STRATEGIST_SYSTEM_PROMPT,
     prompt,
     model: NODE_MODELS.strategist,
@@ -104,6 +111,9 @@ export async function runReplenishPlanning(
     // The prompt pins pillarName to the existing set; a hallucinated name
     // gets dropped instead of creating an orphan brief.
     if (!pillarId) continue;
+    // The output schema already excludes disallowed formats; this also
+    // covers a campaign whose format set shrank while a job was in flight.
+    if (!allowedFormats.includes(brief.format)) continue;
     const key = brief.topic.trim().toLowerCase();
     if (knownTopics.has(key)) continue;
     knownTopics.add(key);

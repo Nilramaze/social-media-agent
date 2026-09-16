@@ -17,7 +17,17 @@ import { eq } from "drizzle-orm";
 import { QA_RETRY_LIMIT, runQA } from "./qa";
 import type { QaJudgeOutput } from "./schema";
 
-async function seedItemWithVersion(overrides: Partial<{ hook: string; script: string; caption: string; qaRetryCount: number }> = {}) {
+async function seedItemWithVersion(
+  overrides: Partial<{
+    hook: string;
+    script: string;
+    caption: string;
+    hashtags: string[];
+    qaRetryCount: number;
+    goalText: string;
+    bannedTerms: string[];
+  }> = {},
+) {
   const [workspace] = await db.insert(workspaces).values({ name: `test-ws-${randomUUID()}` }).returning();
   if (!workspace) throw new Error("failed");
   await db.insert(brandProfiles).values({
@@ -26,7 +36,14 @@ async function seedItemWithVersion(overrides: Partial<{ hook: string; script: st
     guidelines: "keine Buzzwords",
     targetAudience: "KMU",
   });
-  const [campaign] = await db.insert(campaigns).values({ workspaceId: workspace.id, goalText: "x" }).returning();
+  const [campaign] = await db
+    .insert(campaigns)
+    .values({
+      workspaceId: workspace.id,
+      goalText: overrides.goalText ?? "x",
+      bannedTerms: overrides.bannedTerms ?? [],
+    })
+    .returning();
   if (!campaign) throw new Error("failed");
   const [brief] = await db
     .insert(contentBriefs)
@@ -53,7 +70,7 @@ async function seedItemWithVersion(overrides: Partial<{ hook: string; script: st
       script: overrides.script ?? "Ein normales Skript ohne Probleme.",
       caption: overrides.caption ?? "Automatisierung fuer KMU.",
       cta: "Jetzt Termin buchen.",
-      hashtags: ["#kmu", "#automatisierung", "#ki"],
+      hashtags: overrides.hashtags ?? ["#kmu", "#automatisierung", "#ki"],
       createdBy: "llm",
     })
     .returning();
@@ -123,7 +140,7 @@ test("runQA passes clean content and an existing creative version via the LLM ju
   await addCreativeVersion(item);
 
   try {
-    const judgeOutput: QaJudgeOutput = { verdict: "pass", feedback: "Sieht gut aus." };
+    const judgeOutput: QaJudgeOutput = { verdict: "pass", scopeViolation: false, feedback: "Sieht gut aus." };
     const llm = new FakeLLMProvider({ generateStructured: () => judgeOutput });
 
     const result = await runQA(item.id, { llm });
@@ -141,7 +158,7 @@ test("runQA fails with category visual when no creative version exists yet", asy
   const { workspace, campaign, brief, item } = await seedItemWithVersion();
 
   try {
-    const judgeOutput: QaJudgeOutput = { verdict: "pass", feedback: "Sieht gut aus." };
+    const judgeOutput: QaJudgeOutput = { verdict: "pass", scopeViolation: false, feedback: "Sieht gut aus." };
     const llm = new FakeLLMProvider({ generateStructured: () => judgeOutput });
 
     const result = await runQA(item.id, { llm });
@@ -170,6 +187,75 @@ test("runQA escalates to needs_human_review once the retry limit is exceeded", a
     const [updated] = await db.select().from(contentItems).where(eq(contentItems.id, item.id));
     assert.equal(updated?.status, "needs_human_review");
     assert.equal(updated?.qaRetryCount, QA_RETRY_LIMIT + 1);
+  } finally {
+    await cleanup({ workspaceId: workspace.id, campaignId: campaign.id, briefId: brief.id, itemId: item.id });
+  }
+});
+
+test("runQA fails on a campaign-banned term without calling the LLM judge", async () => {
+  const { workspace, campaign, brief, item } = await seedItemWithVersion({
+    goalText: "Kunden mit Aquarien fuer meinen Plankton-Shop gewinnen. Nur Aquaristik und Wasserqualitaet.",
+    bannedTerms: ["KI", "Webagentur"],
+    caption: "Ein klares Aquarium braucht ein stabiles System - genau wie dein Business mit KI.",
+  });
+
+  try {
+    let judgeCalled = false;
+    const llm = new FakeLLMProvider({
+      generateStructured: () => {
+        judgeCalled = true;
+        throw new Error("should not be called");
+      },
+    });
+
+    const result = await runQA(item.id, { llm });
+    assert.equal(result.verdict, "fail");
+    assert.equal(result.scopeViolation, true);
+    assert.equal(judgeCalled, false);
+
+    const [qa] = await db.select().from(qaResults).where(eq(qaResults.contentItemId, item.id));
+    assert.match(qa?.judgeFeedback ?? "", /SCOPE-VERLETZUNG/);
+    assert.ok((qa?.schemaErrors as string[] | null)?.some((e) => e.includes('"KI"')));
+  } finally {
+    await cleanup({ workspaceId: workspace.id, campaignId: campaign.id, briefId: brief.id, itemId: item.id });
+  }
+});
+
+test("runQA catches a banned term that only appears in the hashtags", async () => {
+  const { workspace, campaign, brief, item } = await seedItemWithVersion({
+    bannedTerms: ["Webagentur"],
+    hashtags: ["#aquaristik", "#wasserwerte", "#Webagentur"],
+  });
+
+  try {
+    const llm = new FakeLLMProvider({});
+    const result = await runQA(item.id, { llm });
+    assert.equal(result.verdict, "fail");
+    assert.equal(result.scopeViolation, true);
+  } finally {
+    await cleanup({ workspaceId: workspace.id, campaignId: campaign.id, briefId: brief.id, itemId: item.id });
+  }
+});
+
+test("runQA fails when the judge reports a scope violation despite a pass verdict", async () => {
+  const { workspace, campaign, brief, item } = await seedItemWithVersion();
+  await addCreativeVersion(item);
+
+  try {
+    const judgeOutput: QaJudgeOutput = {
+      verdict: "pass",
+      scopeViolation: true,
+      feedback: "Die Hook leitet per Analogie auf Unternehmensprozesse ueber.",
+    };
+    const llm = new FakeLLMProvider({ generateStructured: () => judgeOutput });
+
+    const result = await runQA(item.id, { llm });
+    assert.equal(result.verdict, "fail");
+    assert.equal(result.scopeViolation, true);
+    assert.equal(result.category, "script");
+
+    const [updated] = await db.select().from(contentItems).where(eq(contentItems.id, item.id));
+    assert.equal(updated?.status, "drafting");
   } finally {
     await cleanup({ workspaceId: workspace.id, campaignId: campaign.id, briefId: brief.id, itemId: item.id });
   }

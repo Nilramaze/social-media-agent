@@ -23,6 +23,11 @@ export type ContentOutput = z.infer<typeof contentOutputSchema>;
 
 export const qaJudgeOutputSchema = z.object({
   verdict: z.enum(["pass", "fail"]),
+  // Set when the content leaves the campaign's briefing (foreign topic,
+  // foreign industry, or an analogy that bridges to one). Tracked separately
+  // from `verdict` so the retry gets told it drifted rather than just
+  // "schwacher Hook" - and so scope drift is visible in qa_results.
+  scopeViolation: z.boolean(),
   feedback: z.string().min(1),
 });
 export type QaJudgeOutput = z.infer<typeof qaJudgeOutputSchema>;

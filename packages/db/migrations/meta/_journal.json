@@ -50,6 +50,20 @@
       "when": 1788889635343,
       "tag": "0006_instagram_token_store",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789542368668,
+      "tag": "0007_campaign_guardrails",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1789543991411,
+      "tag": "0008_campaign_allowed_formats",
+      "breakpoints": true
     }
   ]
 }
