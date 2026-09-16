@@ -29,8 +29,12 @@ services:
       timeout: 5s
       retries: 10
 
+  # MinIO deleted both images from Docker Hub on 2026-09-11; the same
+  # manifests live on quay.io. The community edition stopped getting new
+  # builds in Oct 2025, so these tags are the final ones - pinned rather
+  # than :latest, in case quay's floating tag moves or goes away too.
   minio:
-    image: minio/minio:latest
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
