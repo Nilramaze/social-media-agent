@@ -17,8 +17,16 @@ export function buildStrategistPrompt(input: {
   allowedFormats: ContentBriefFormat[];
   brandProfile: BrandProfile;
   recentLearnings: Learning[];
+  feedback?: string | undefined;
 }): string {
-  const { guardrails, allowedFormats, brandProfile, recentLearnings } = input;
+  const { guardrails, allowedFormats, brandProfile, recentLearnings, feedback } = input;
+
+  const feedbackSection = feedback?.trim()
+    ? `
+
+Feedback zur vorherigen, abgelehnten Planung (unbedingt umsetzen):
+${feedback.trim()}`
+    : "";
 
   const learningsSection =
     recentLearnings.length > 0
@@ -33,7 +41,7 @@ Brand Guidelines: ${brandProfile.guidelines}
 Uebliche Workspace-Zielgruppe: ${brandProfile.targetAudience} (nur relevant, soweit sie zum Kampagnen-Briefing passt)
 
 Learnings aus vergangenen Kampagnen (nur uebernehmen, was zum Kampagnen-Briefing passt):
-${learningsSection}
+${learningsSection}${feedbackSection}
 
 Aufgabe:
 1. Definiere 1-6 Content-Pillars (thematische Saeulen), die auf das Kampagnenziel einzahlen. Jede Pillar muss fuer sich genommen eindeutig zum Kampagnen-Briefing gehoeren - eine Pillar, die man auch in einer beliebigen anderen Branche verwenden koennte, ist zu unspezifisch.

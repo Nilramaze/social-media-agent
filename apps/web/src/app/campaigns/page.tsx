@@ -2,22 +2,18 @@ import { campaigns, db } from "@sma/db";
 import { desc } from "drizzle-orm";
 import Link from "next/link";
 import { DeleteButton } from "@/components/delete-button";
+import { CAMPAIGN_STATUS_LABELS } from "@/lib/labels";
 
 export const dynamic = "force-dynamic";
 
 const CAMPAIGN_STATUS_STYLES: Record<string, string> = {
   draft: "text-agent-standby",
+  plan_review: "text-agent-standby",
   active: "text-agent-active",
   completed: "text-ink-muted",
   failed: "text-agent-terminating",
 };
 
-const CAMPAIGN_STATUS_LABELS: Record<string, string> = {
-  draft: "Wird geplant",
-  active: "Aktiv",
-  completed: "Abgeschlossen",
-  failed: "Fehlgeschlagen",
-};
 
 export default async function CampaignsPage() {
   const rows = await db.select().from(campaigns).orderBy(desc(campaigns.createdAt));

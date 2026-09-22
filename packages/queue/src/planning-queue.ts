@@ -6,6 +6,8 @@ export const PLANNING_QUEUE_NAME = "planning";
 
 export const planningJobSchema = z.object({
   campaignId: z.string(),
+  /** Reviewer feedback when a rejected plan is planned again. */
+  feedback: z.string().max(5_000).optional(),
 });
 export type PlanningJobData = z.infer<typeof planningJobSchema>;
 
@@ -27,4 +29,15 @@ export async function enqueuePlanningJob(data: PlanningJobData): Promise<void> {
     removeOnComplete: true,
     removeOnFail: 100,
   });
+}
+
+/**
+ * "Neu planen": the first planning job may still sit in the queue (a failed
+ * one is kept, see removeOnFail), and BullMQ dedupes by jobId - so it has
+ * to be removed before the new run can be added.
+ */
+export async function requeuePlanningJob(data: PlanningJobData): Promise<void> {
+  const existing = await getPlanningQueue().getJob(`planning-${data.campaignId}`);
+  if (existing) await existing.remove();
+  await enqueuePlanningJob(data);
 }

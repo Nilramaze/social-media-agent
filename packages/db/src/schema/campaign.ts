@@ -1,7 +1,16 @@
 import { boolean, integer, jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import { createdAtColumn, idColumn, workspaceIdColumn } from "./common";
 
-export const campaignStatusValues = ["draft", "active", "completed", "failed"] as const;
+// draft -> (strategist plans pillars + briefs) -> plan_review -> (human
+// approves the plan) -> active. Nothing is researched or produced before the
+// plan is approved.
+export const campaignStatusValues = [
+  "draft",
+  "plan_review",
+  "active",
+  "completed",
+  "failed",
+] as const;
 
 export const contentBriefFormatValues = ["reel", "carousel", "post"] as const;
 export type ContentBriefFormat = (typeof contentBriefFormatValues)[number];

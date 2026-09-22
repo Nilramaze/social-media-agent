@@ -19,3 +19,11 @@ export const STEP_LABELS: Record<string, string> = {
   creative: "Creative-Agent (Video-Rendering)",
   qa: "QA-Agent",
 };
+
+export const CAMPAIGN_STATUS_LABELS: Record<string, string> = {
+  draft: "Wird geplant",
+  plan_review: "Plan wartet auf Freigabe",
+  active: "Aktiv",
+  completed: "Abgeschlossen",
+  failed: "Fehlgeschlagen",
+};

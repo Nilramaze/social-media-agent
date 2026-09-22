@@ -6,13 +6,14 @@ import {
   db,
 } from "@sma/db";
 import { countUpcomingContentItems } from "@sma/domain";
-import { eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { STATUS_LABELS, STEP_LABELS } from "@/lib/labels";
+import { CAMPAIGN_STATUS_LABELS, STATUS_LABELS, STEP_LABELS } from "@/lib/labels";
 import { DeleteButton } from "@/components/delete-button";
 import { DesignGuidelinesEditor } from "./design-guidelines-editor";
 import { GuardrailsEditor } from "./guardrails-editor";
+import { PlanReview } from "./plan-review";
 import { ReplenishControls } from "./replenish-controls";
 
 export const dynamic = "force-dynamic";
@@ -30,8 +31,15 @@ async function getCampaignDetail(id: string) {
   const [campaign] = await db.select().from(campaigns).where(eq(campaigns.id, id)).limit(1);
   if (!campaign) return null;
 
-  const pillars = await db.select().from(contentPillars).where(eq(contentPillars.campaignId, id));
-  const briefs = await db.select().from(contentBriefs).where(eq(contentBriefs.campaignId, id));
+  const pillars = await db
+    .select()
+    .from(contentPillars)
+    .where(and(eq(contentPillars.campaignId, id), eq(contentPillars.active, true)));
+  // Cancelled briefs were dropped in plan review and never get an item.
+  const briefs = await db
+    .select()
+    .from(contentBriefs)
+    .where(and(eq(contentBriefs.campaignId, id), ne(contentBriefs.status, "cancelled")));
 
   const items = [];
   for (const brief of briefs) {
@@ -54,6 +62,8 @@ export default async function CampaignDetailPage({
   if (!data) notFound();
 
   const { campaign, pillars, items, upcoming } = data;
+  // While the plan is in review its briefs are edited above; items come after approval.
+  const producedItems = campaign.status === "plan_review" ? [] : items;
 
   return (
     <div className="w-full max-w-7xl mx-auto px-8 py-10 space-y-10">
@@ -61,7 +71,7 @@ export default async function CampaignDetailPage({
         <div className="space-y-2 max-w-3xl">
           <div className="flex items-center gap-3">
             <span className="px-2 py-0.5 rounded-full bg-surface-card text-ink-muted text-mono-data uppercase tracking-widest border border-border-subtle">
-              {campaign.status}
+              {CAMPAIGN_STATUS_LABELS[campaign.status] ?? campaign.status}
             </span>
             <span className="text-mono-data text-ink-muted">
               {new Date(campaign.createdAt).toLocaleString("de-DE")}
@@ -99,6 +109,20 @@ export default async function CampaignDetailPage({
         <p className="rounded-xl border border-agent-terminating/40 bg-agent-terminating/5 p-4 text-body-md text-agent-terminating">
           Planning fehlgeschlagen: {campaign.planningError ?? "Unbekannter Fehler"}
         </p>
+      ) : campaign.status === "plan_review" ? (
+        <PlanReview
+          campaignId={campaign.id}
+          pillars={pillars.map((p) => ({ id: p.id, name: p.name, description: p.description }))}
+          briefs={items
+            .filter(({ brief }) => brief.status === "planned")
+            .map(({ brief }) => ({
+              id: brief.id,
+              topic: brief.topic,
+              format: brief.format,
+              pillarId: brief.pillarId,
+            }))}
+          allowedFormats={campaign.allowedFormats}
+        />
       ) : pillars.length === 0 ? (
         <p className="text-body-md text-ink-muted">Strategist plant noch die Content-Pillars… (Seite neu laden)</p>
       ) : (
@@ -129,13 +153,13 @@ export default async function CampaignDetailPage({
 
       <section className="space-y-3">
         <h2 className="text-label-sm text-ink-muted uppercase tracking-wider">
-          Content-Items ({items.length})
+          Content-Items ({producedItems.length})
         </h2>
-        {items.length === 0 ? (
+        {producedItems.length === 0 ? (
           <p className="text-body-md text-ink-muted">Noch keine Content-Items angelegt.</p>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {items.map(({ brief, item }) => (
+            {producedItems.map(({ brief, item }) => (
               <div
                 key={brief.id}
                 className="rounded-lg bg-surface-card border border-border-subtle p-5 flex flex-col justify-between"

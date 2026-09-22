@@ -45,7 +45,7 @@ async function cleanup(workspaceId: string, campaignId: string) {
   await db.delete(workspaces).where(eq(workspaces.id, workspaceId));
 }
 
-test("runPlanning writes pillars and briefs and activates the campaign", async () => {
+test("runPlanning writes pillars and briefs and parks the campaign in plan review", async () => {
   const { workspace, campaign } = await seedTestWorkspace();
 
   try {
@@ -67,7 +67,7 @@ test("runPlanning writes pillars and briefs and activates the campaign", async (
       .select()
       .from(campaigns)
       .where(eq(campaigns.id, campaign.id));
-    assert.equal(updatedCampaign?.status, "active");
+    assert.equal(updatedCampaign?.status, "plan_review");
 
     const pillars = await db
       .select()

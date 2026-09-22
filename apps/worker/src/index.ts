@@ -3,7 +3,6 @@ import { campaigns, contentItems, db } from "@sma/db";
 import { eq } from "drizzle-orm";
 import {
   createContentItemsForBriefs,
-  createContentItemsForCampaign,
   findCampaignsToReplenish,
   getInstagramCredentials,
   refreshInstagramTokenIfNeeded,
@@ -74,18 +73,13 @@ function getStorage() {
 const planningWorker = new Worker(
   PLANNING_QUEUE_NAME,
   async (job) => {
-    const { campaignId } = planningJobSchema.parse(job.data);
+    const { campaignId, feedback } = planningJobSchema.parse(job.data);
     console.log(`[worker] running planning for campaign ${campaignId}`);
     try {
-      await runPlanning(campaignId, { llm });
-
-      const contentItemIds = await createContentItemsForCampaign(campaignId);
-      console.log(
-        `[worker] planning done for campaign ${campaignId}, created ${contentItemIds.length} content item(s)`,
-      );
-      for (const contentItemId of contentItemIds) {
-        await enqueueProductionRun({ contentItemId });
-      }
+      // Production only starts once the plan is approved in the review queue
+      // (POST /api/campaigns/:id/plan/approve).
+      await runPlanning(campaignId, { llm, feedback });
+      console.log(`[worker] planning done for campaign ${campaignId}, waiting for plan review`);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       await db

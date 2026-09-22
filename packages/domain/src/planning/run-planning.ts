@@ -20,8 +20,15 @@ import { buildStrategistOutputSchema } from "./schema";
 export interface RunPlanningDeps {
   llm: LLMProvider;
   db?: Db;
+  /** Reviewer feedback on a rejected earlier plan ("Neu planen"). */
+  feedback?: string | undefined;
 }
 
+/**
+ * Plans pillars + briefs for a campaign and parks it in `plan_review`.
+ * No content items are created here - that happens once a human approves
+ * the plan (see approvePlan), so nothing is researched on an unreviewed plan.
+ */
 export async function runPlanning(
   campaignId: string,
   deps: RunPlanningDeps,
@@ -58,6 +65,7 @@ export async function runPlanning(
     allowedFormats,
     brandProfile,
     recentLearnings,
+    feedback: deps.feedback,
   });
 
   const output = await deps.llm.generateStructured({
@@ -96,6 +104,6 @@ export async function runPlanning(
 
   await db
     .update(campaigns)
-    .set({ status: "active" })
+    .set({ status: "plan_review", planningError: null })
     .where(eq(campaigns.id, campaign.id));
 }

@@ -1,19 +1,21 @@
 import { campaigns, db } from "@sma/db";
 import { desc } from "drizzle-orm";
 import Link from "next/link";
+import { CAMPAIGN_STATUS_LABELS } from "@/lib/labels";
 import { NewCampaignForm } from "./new-campaign-form";
 
 export const dynamic = "force-dynamic";
 
 const PIPELINE_STAGES = [
   { n: 1, name: "Strategist", desc: "Analysiert das Ziel und plant 3-6 thematische Content-Pillars." },
-  { n: 2, name: "Research-Agent", desc: "Recherchiert jedes Thema eigenstaendig mit Web-Suche und Quellenbelegen." },
-  { n: 3, name: "Content-Agent", desc: "Schreibt Hook, Skript, Caption, CTA und Hashtags." },
-  { n: 4, name: "Voice-Agent", desc: "Vertont das Skript, erzeugt wortgenaue Untertitel-Timings." },
-  { n: 5, name: "Creative-Agent", desc: "Rendert das fertige Reel-Video inkl. Untertitel und Audiospur." },
-  { n: 6, name: "QA-Agent", desc: "Prueft Text und Video gegen Brand Guidelines, retried bei Bedarf." },
-  { n: 7, name: "Human Approval", desc: "Wartet auf deine Freigabe, Aenderung oder Ablehnung im Review." },
-  { n: 8, name: "Publish & Analytics", desc: "Veroeffentlicht auf Instagram und sammelt Performance-Daten." },
+  { n: 2, name: "Plan-Freigabe", desc: "Du pruefst Pillars und Themen, bearbeitest sie oder laesst neu planen." },
+  { n: 3, name: "Research-Agent", desc: "Recherchiert jedes Thema eigenstaendig mit Web-Suche und Quellenbelegen." },
+  { n: 4, name: "Content-Agent", desc: "Schreibt Hook, Skript, Caption, CTA und Hashtags." },
+  { n: 5, name: "Voice-Agent", desc: "Vertont das Skript, erzeugt wortgenaue Untertitel-Timings." },
+  { n: 6, name: "Creative-Agent", desc: "Rendert das fertige Reel-Video inkl. Untertitel und Audiospur." },
+  { n: 7, name: "QA-Agent", desc: "Prueft Text und Video gegen Brand Guidelines, retried bei Bedarf." },
+  { n: 8, name: "Human Approval", desc: "Wartet auf deine Freigabe, Aenderung oder Ablehnung im Review." },
+  { n: 9, name: "Publish & Analytics", desc: "Veroeffentlicht auf Instagram und sammelt Performance-Daten." },
 ];
 
 export default async function Home() {
@@ -89,7 +91,9 @@ export default async function Home() {
                   >
                     <div className="flex flex-col min-w-0 pr-2">
                       <span className="text-body-md text-primary font-medium truncate">{c.goalText}</span>
-                      <span className="text-mono-data text-ink-muted">{c.status}</span>
+                      <span className="text-mono-data text-ink-muted">
+                        {CAMPAIGN_STATUS_LABELS[c.status] ?? c.status}
+                      </span>
                     </div>
                     <span className="text-ink-muted group-hover:text-primary">→</span>
                   </Link>
