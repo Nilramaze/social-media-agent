@@ -103,6 +103,17 @@ Migrationen laufen dabei automatisch (der `migrate`-Service startet vor web und
 worker). Laufende Render-Jobs werden beim Neustart des Workers abgebrochen und
 von BullMQ als "stalled" erneut gestartet.
 
+### Konfiguration pruefen
+
+```bash
+bash deploy/check.sh
+```
+
+Liest nur, aendert nichts und gibt keine Geheimnisse aus. Prueft die `.env`
+auf fehlende Werte und Platzhalter, testet den Instagram-Token live gegen die
+Graph API (Account abrufen, Gueltigkeit und Rechte), zeigt Container-Status,
+Content-Items nach Status und Worker-Fehler der letzten 24 Stunden.
+
 ### Logs
 
 ```bash
