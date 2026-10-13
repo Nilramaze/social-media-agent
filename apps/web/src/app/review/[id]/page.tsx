@@ -110,6 +110,15 @@ export default async function ReviewDetailPage({
           {item.status === "failed" ? (
             <RetryButton endpoint={`/api/content-items/${item.id}/retry`} />
           ) : null}
+          {currentVersion ? (
+            <a
+              href={`/api/content-items/${item.id}/text`}
+              download
+              className="shrink-0 rounded border border-border-subtle px-3 py-1.5 text-label-md text-primary hover:bg-surface-subtle transition-colors"
+            >
+              Als TXT herunterladen
+            </a>
+          ) : null}
           <DeleteButton
             endpoint={`/api/content-items/${item.id}`}
             confirmText={`Content-Item "${brief?.topic ?? item.id}" wirklich loeschen?`}

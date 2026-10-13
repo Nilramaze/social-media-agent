@@ -74,7 +74,6 @@ function ReviewItemList({ items, accent }: { items: ReviewItem[]; accent?: boole
 
 export default async function ReviewQueuePage() {
   const [plans, { scripts, finished }] = await Promise.all([getPlanReviews(), getReviewItems()]);
-  const nothingOpen = plans.length === 0 && scripts.length === 0 && finished.length === 0;
 
   return (
     <div className="w-full max-w-3xl mx-auto px-8 py-10 space-y-6">
@@ -109,32 +108,39 @@ export default async function ReviewQueuePage() {
         </section>
       ) : null}
 
-      {scripts.length > 0 ? (
-        <section className="space-y-3">
-          <div className="space-y-1">
-            <h2 className="text-label-sm text-ink-muted uppercase tracking-wider">
-              Skripte ({scripts.length})
-            </h2>
-            <p className="text-mono-data text-ink-muted">
-              Vertonung, Bilder und Rendering starten erst nach der Freigabe.
-            </p>
-          </div>
-          <ReviewItemList items={scripts} accent />
-        </section>
-      ) : null}
-
-      {finished.length > 0 ? (
-        <section className="space-y-3">
+      {/* Both content-item gates stay visible even when empty, so the
+          two-stage flow is always recognisable. */}
+      <section className="space-y-3">
+        <div className="space-y-1">
           <h2 className="text-label-sm text-ink-muted uppercase tracking-wider">
-            Fertige Content-Items ({finished.length})
+            1. Skripte ({scripts.length})
           </h2>
-          <ReviewItemList items={finished} />
-        </section>
-      ) : null}
+          <p className="text-mono-data text-ink-muted">
+            Vertonung, Bilder und Rendering starten erst nach der Freigabe.
+          </p>
+        </div>
+        {scripts.length === 0 ? (
+          <p className="text-body-md text-ink-muted">Keine Skripte zur Freigabe.</p>
+        ) : (
+          <ReviewItemList items={scripts} accent />
+        )}
+      </section>
 
-      {nothingOpen ? (
-        <p className="text-body-md text-ink-muted">Nichts zu review — alles erledigt.</p>
-      ) : null}
+      <section className="space-y-3">
+        <div className="space-y-1">
+          <h2 className="text-label-sm text-ink-muted uppercase tracking-wider">
+            2. Fertige Content-Items ({finished.length})
+          </h2>
+          <p className="text-mono-data text-ink-muted">
+            Gerendert und von QA geprueft - nach der Freigabe wird veroeffentlicht.
+          </p>
+        </div>
+        {finished.length === 0 ? (
+          <p className="text-body-md text-ink-muted">Keine fertigen Content-Items zur Freigabe.</p>
+        ) : (
+          <ReviewItemList items={finished} />
+        )}
+      </section>
     </div>
   );
 }
