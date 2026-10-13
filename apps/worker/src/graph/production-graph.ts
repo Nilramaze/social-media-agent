@@ -8,12 +8,15 @@ import {
   markContentItemScheduled,
   markContentItemStep,
   recordApprovalDecision,
+  reopenReview,
   runContent,
   runCreative,
   runCreativeStatic,
   runQA,
   runResearch,
   runVoice,
+  type ApprovalDecisionInput,
+  type ApprovalStage,
   type StaticSlideRenderer,
   type VideoRenderer,
 } from "@sma/domain";
@@ -36,6 +39,32 @@ function requireEnv(name: string): string {
   const value = process.env[name];
   if (!value) throw new Error(`Missing required env var: ${name}`);
   return value;
+}
+
+/**
+ * Pauses the graph until a reviewer decides at the given gate.
+ *
+ * interrupt() comes first: the calling node re-runs from the top on every
+ * resume, so nothing before it may have side effects (see project memory).
+ * Both gates resume the same thread, so a decision meant for the other one
+ * (e.g. a duplicate script approval reaching the final media review) is
+ * dropped and the item goes back into this gate's queue. Throwing instead
+ * would wedge the thread: LangGraph replays the stored resume value on every
+ * later resume.
+ */
+async function awaitReviewDecision(
+  contentItemId: string,
+  stage: ApprovalStage,
+): Promise<ApprovalDecisionInput> {
+  for (;;) {
+    const decision = approvalDecisionSchema.parse(interrupt({ contentItemId, stage }));
+    if (!decision.stage || decision.stage === stage) return decision;
+    console.warn(
+      `[worker] dropped a ${decision.stage}-review decision that reached the ${stage} review of ${contentItemId}`,
+    );
+    // Idempotent, so safe to repeat when the node replays.
+    await reopenReview(contentItemId, stage);
+  }
 }
 
 export interface ProductionGraphDeps {
@@ -73,7 +102,14 @@ export function buildProductionGraph({
     .addNode("content", async (state) => {
       await markContentItemStep(state.contentItemId, "content");
       await runContent(state.contentItemId, { llm });
+      // Pausing for the script review next - no agent works on it meanwhile.
+      await markContentItemStep(state.contentItemId, null);
       return {};
+    })
+    .addNode("script_review", async (state) => {
+      const decision = await awaitReviewDecision(state.contentItemId, "script");
+      await recordApprovalDecision(state.contentItemId, "script", decision);
+      return { scriptDecision: decision.decision };
     })
     .addNode("voice", async (state) => {
       await markContentItemStep(state.contentItemId, "voice");
@@ -133,11 +169,8 @@ export function buildProductionGraph({
       };
     })
     .addNode("human_approval", async (state) => {
-      // interrupt() first: this node re-runs from the top on every resume,
-      // so nothing before it may have side effects (see project memory).
-      const resumeValue = interrupt({ contentItemId: state.contentItemId });
-      const decision = approvalDecisionSchema.parse(resumeValue);
-      await recordApprovalDecision(state.contentItemId, decision);
+      const decision = await awaitReviewDecision(state.contentItemId, "final");
+      await recordApprovalDecision(state.contentItemId, "final", decision);
       return { approvalDecision: decision.decision, approvalTarget: decision.target };
     })
     .addNode("schedule_publish", async (state) => {
@@ -149,7 +182,12 @@ export function buildProductionGraph({
     })
     .addEdge(START, "research")
     .addEdge("research", "content")
-    .addConditionalEdges("content", async (state) => {
+    // Every new script version (first draft, QA script retry, reviewer
+    // revision) passes the human script gate before any media spend.
+    .addEdge("content", "script_review")
+    .addConditionalEdges("script_review", async (state) => {
+      if (state.scriptDecision === "changes_requested") return "content";
+      if (state.scriptDecision === "rejected") return END;
       const format = await getContentItemFormat(state.contentItemId);
       // Reels need synthesized narration before the background visuals can
       // be timed against it; carousel/post are static images with no audio.

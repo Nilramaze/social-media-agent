@@ -64,6 +64,13 @@
       "when": 1789543991411,
       "tag": "0008_campaign_allowed_formats",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791895046660,
+      "tag": "0009_approval_stage",
+      "breakpoints": true
     }
   ]
 }

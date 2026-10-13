@@ -6,6 +6,7 @@ export const contentItemFormatValues = ["reel", "carousel", "post"] as const;
 export const contentItemStatusValues = [
   "researching",
   "drafting",
+  "script_review",
   "in_qa",
   "needs_human_review",
   "ready_for_review",

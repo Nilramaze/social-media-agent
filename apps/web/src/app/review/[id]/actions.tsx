@@ -6,7 +6,17 @@ import { useState } from "react";
 type Decision = "approved" | "changes_requested" | "rejected";
 type Target = "content" | "creative";
 
-export function ReviewActions({ contentItemId }: { contentItemId: string }) {
+/**
+ * "script": text-only gate before voice/images/rendering - a change request
+ * always goes back to the content agent. "final": finished media after QA.
+ */
+export function ReviewActions({
+  contentItemId,
+  stage,
+}: {
+  contentItemId: string;
+  stage: "script" | "final";
+}) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,20 +55,22 @@ export function ReviewActions({ contentItemId }: { contentItemId: string }) {
 
       {showFeedback ? (
         <div className="flex flex-col gap-3">
-          <div className="flex gap-5 text-body-md text-primary">
-            <label className="flex items-center gap-1.5">
-              <input type="radio" checked={target === "content"} onChange={() => setTarget("content")} />
-              Text (Hook/Skript/Caption/CTA)
-            </label>
-            <label className="flex items-center gap-1.5">
-              <input type="radio" checked={target === "creative"} onChange={() => setTarget("creative")} />
-              Video
-            </label>
-          </div>
+          {stage === "final" ? (
+            <div className="flex gap-5 text-body-md text-primary">
+              <label className="flex items-center gap-1.5">
+                <input type="radio" checked={target === "content"} onChange={() => setTarget("content")} />
+                Text (Hook/Skript/Caption/CTA)
+              </label>
+              <label className="flex items-center gap-1.5">
+                <input type="radio" checked={target === "creative"} onChange={() => setTarget("creative")} />
+                Video
+              </label>
+            </div>
+          ) : null}
           <textarea
             className="w-full rounded-lg border border-border-subtle bg-surface-bone p-3 text-body-md text-primary focus:outline-none focus:ring-1 focus:ring-ink-graphite"
             rows={3}
-            placeholder="Was soll geaendert werden?"
+            placeholder={stage === "script" ? "Was soll am Skript geaendert werden?" : "Was soll geaendert werden?"}
             value={feedback}
             onChange={(e) => setFeedback(e.target.value)}
           />
@@ -66,7 +78,12 @@ export function ReviewActions({ contentItemId }: { contentItemId: string }) {
             <button
               type="button"
               disabled={pending || feedback.trim().length === 0}
-              onClick={() => submit("changes_requested", { feedback: feedback.trim(), target })}
+              onClick={() =>
+                submit("changes_requested", {
+                  feedback: feedback.trim(),
+                  target: stage === "script" ? "content" : target,
+                })
+              }
               className="rounded-lg bg-agent-standby px-4 py-2.5 text-body-md font-medium text-on-primary hover:opacity-90 disabled:opacity-50 transition-opacity"
             >
               Aenderung absenden
@@ -89,7 +106,7 @@ export function ReviewActions({ contentItemId }: { contentItemId: string }) {
             onClick={() => submit("approved")}
             className="flex-1 rounded-lg bg-agent-active px-4 py-3 text-body-md font-medium text-on-primary hover:opacity-90 disabled:opacity-50 transition-opacity"
           >
-            Freigeben
+            {stage === "script" ? "Skript freigeben" : "Freigeben"}
           </button>
           <button
             type="button"

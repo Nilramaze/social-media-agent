@@ -21,6 +21,7 @@ const MONTH_LABELS = [
 ];
 
 const STATUS_DOT: Record<string, string> = {
+  script_review: "bg-agent-standby",
   ready_for_review: "bg-agent-standby",
   approved: "bg-agent-pulse",
   scheduled: "bg-agent-pulse",

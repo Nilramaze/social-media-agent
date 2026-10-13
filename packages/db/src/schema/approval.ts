@@ -8,6 +8,9 @@ export const approvalDecisionValues = [
   "rejected",
 ] as const;
 export const approvalTargetValues = ["content", "creative"] as const;
+// "script": the text gate between content and the expensive voice/image/
+// render steps. "final": the review of the finished, QA-passed media.
+export const approvalStageValues = ["script", "final"] as const;
 
 export const approvals = pgTable("approvals", {
   id: idColumn(),
@@ -16,6 +19,7 @@ export const approvals = pgTable("approvals", {
     .notNull()
     .references(() => contentItems.id),
   decision: text("decision", { enum: approvalDecisionValues }).notNull(),
+  stage: text("stage", { enum: approvalStageValues }).notNull().default("final"),
   target: text("target", { enum: approvalTargetValues }),
   feedback: text("feedback"),
   decidedBy: text("decided_by").notNull(),

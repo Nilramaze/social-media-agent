@@ -30,12 +30,20 @@ import {
   FakeVoiceProvider,
   type SearchProvider,
 } from "@sma/providers";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { buildProductionGraph } from "./production-graph";
 
 function getInterrupt(result: unknown): unknown {
   return (result as { __interrupt__?: unknown }).__interrupt__;
 }
+
+/** Which review gate the graph paused at ("script" | "final"), if any. */
+function getInterruptStage(result: unknown): string | undefined {
+  const interrupts = getInterrupt(result) as { value?: { stage?: string } }[] | undefined;
+  return interrupts?.[0]?.value?.stage;
+}
+
+const SCRIPT_APPROVED = { decision: "approved", decidedBy: "test-reviewer", stage: "script" };
 
 class FakeSearchProvider implements SearchProvider {
   async search(_query: string) {
@@ -119,10 +127,14 @@ test("production graph loops back to content on QA fail, then finishes ready_for
       checkpointer: new MemorySaver(),
     });
 
-    await graph.invoke(
-      { contentItemId: item.id },
-      { configurable: { thread_id: item.id } },
-    );
+    const config = { configurable: { thread_id: item.id } };
+    const first = await graph.invoke({ contentItemId: item.id }, config);
+    assert.equal(getInterruptStage(first), "script");
+    // QA fails the first script -> the rewrite passes the script gate again.
+    const second = await graph.invoke(new Command({ resume: SCRIPT_APPROVED }), config);
+    assert.equal(getInterruptStage(second), "script");
+    const third = await graph.invoke(new Command({ resume: SCRIPT_APPROVED }), config);
+    assert.equal(getInterruptStage(third), "final");
 
     assert.equal(qaCallCount, 2);
 
@@ -208,8 +220,10 @@ test("human approval gate: interrupts on QA pass, loops on changes_requested, en
     });
     const config = { configurable: { thread_id: item.id } };
 
-    const firstResult = await graph.invoke({ contentItemId: item.id }, config);
-    assert.ok(getInterrupt(firstResult), "expected graph to pause at human_approval");
+    const scriptPause = await graph.invoke({ contentItemId: item.id }, config);
+    assert.equal(getInterruptStage(scriptPause), "script");
+    const firstResult = await graph.invoke(new Command({ resume: SCRIPT_APPROVED }), config);
+    assert.equal(getInterruptStage(firstResult), "final", "expected graph to pause at human_approval");
 
     const [afterQa] = await db.select().from(contentItems).where(eq(contentItems.id, item.id));
     assert.equal(afterQa?.status, "ready_for_review");
@@ -223,17 +237,24 @@ test("human approval gate: interrupts on QA pass, loops on changes_requested, en
           target: "content",
           feedback: "Bitte den CTA staerker machen.",
           decidedBy: "test-reviewer",
+          stage: "final",
         },
       }),
       config,
     );
-    assert.ok(getInterrupt(secondResult), "expected a second pause after the revision");
+    // A text revision is a new script, so it passes the script gate again.
+    assert.equal(getInterruptStage(secondResult), "script");
+    const revisedResult = await graph.invoke(new Command({ resume: SCRIPT_APPROVED }), config);
+    assert.equal(getInterruptStage(revisedResult), "final", "expected a second final pause after the revision");
 
     const versions = await db.select().from(contentVersions).where(eq(contentVersions.contentItemId, item.id));
     assert.equal(versions.length, 2);
     assert.equal(versions[1]?.revisionFeedback, "Bitte den CTA staerker machen.");
 
-    const [afterChangeRequest] = await db.select().from(approvals).where(eq(approvals.contentItemId, item.id));
+    const [afterChangeRequest] = await db
+      .select()
+      .from(approvals)
+      .where(and(eq(approvals.contentItemId, item.id), eq(approvals.stage, "final")));
     assert.equal(afterChangeRequest?.decision, "changes_requested");
 
     const finalResult = await graph.invoke(
@@ -251,8 +272,9 @@ test("human approval gate: interrupts on QA pass, loops on changes_requested, en
     assert.equal(finalItem?.status, "scheduled");
 
     const allApprovals = await db.select().from(approvals).where(eq(approvals.contentItemId, item.id));
-    assert.equal(allApprovals.length, 2);
-    assert.ok(allApprovals.some((a) => a.decision === "approved"));
+    assert.equal(allApprovals.filter((a) => a.stage === "script").length, 2);
+    assert.equal(allApprovals.filter((a) => a.stage === "final").length, 2);
+    assert.ok(allApprovals.some((a) => a.stage === "final" && a.decision === "approved"));
     assert.equal(onApprovedCalledWith, item.id);
     assert.ok(onApprovedDelayMs !== undefined && onApprovedDelayMs > 0, "expected a positive publish delay from the auto-assigned slot");
   } finally {
@@ -326,11 +348,12 @@ test("carousel-format items skip voice and render via the static slide path", as
       checkpointer: new MemorySaver(),
     });
 
-    const result = await graph.invoke(
-      { contentItemId: item.id },
-      { configurable: { thread_id: item.id } },
-    );
-    assert.ok(getInterrupt(result), "expected graph to pause at human_approval");
+    const config = { configurable: { thread_id: item.id } };
+    const scriptPause = await graph.invoke({ contentItemId: item.id }, config);
+    assert.equal(getInterruptStage(scriptPause), "script");
+    assert.equal(staticRenderer.calls.length, 0, "nothing may render before the script is approved");
+    const result = await graph.invoke(new Command({ resume: SCRIPT_APPROVED }), config);
+    assert.equal(getInterruptStage(result), "final", "expected graph to pause at human_approval");
 
     assert.equal(voice.calls.length, 0);
     assert.equal(staticRenderer.calls.length, 2);
@@ -344,6 +367,107 @@ test("carousel-format items skip voice and render via the static slide path", as
       .where(eq(creativeVersions.contentItemId, item.id));
     assert.equal(creative?.assetRefs.length, 2);
     assert.equal(creative?.subtitleData, null);
+  } finally {
+    await cleanup({ workspaceId: workspace.id, campaignId: campaign.id, briefId: brief.id, itemId: item.id });
+  }
+});
+
+test("script gate: pauses before any media spend, revises on changes_requested, ends on rejected", async () => {
+  const [workspace] = await db.insert(workspaces).values({ name: `test-ws-${randomUUID()}` }).returning();
+  if (!workspace) throw new Error("failed");
+  await db.insert(brandProfiles).values({
+    workspaceId: workspace.id,
+    voice: "direkt",
+    guidelines: "keine Buzzwords",
+    targetAudience: "KMU",
+  });
+  const [campaign] = await db.insert(campaigns).values({ workspaceId: workspace.id, goalText: "x" }).returning();
+  if (!campaign) throw new Error("failed");
+  const [brief] = await db
+    .insert(contentBriefs)
+    .values({ workspaceId: workspace.id, campaignId: campaign.id, topic: "KI-Automatisierung", format: "reel" })
+    .returning();
+  if (!brief) throw new Error("failed");
+  const [item] = await db
+    .insert(contentItems)
+    .values({ workspaceId: workspace.id, briefId: brief.id, format: "reel" })
+    .returning();
+  if (!item) throw new Error("failed");
+
+  try {
+    const llm = new FakeLLMProvider({
+      runAgenticStructured: () => ({
+        summary: "Testzusammenfassung",
+        sources: [{ title: "Quelle", url: "https://example.com" }],
+      }),
+      generateStructured: (input) => {
+        if (input.schema === contentOutputSchema) {
+          return { hook: "Hook", script: "Skript", caption: "Caption", cta: "CTA", hashtags: ["#a", "#b", "#c"] };
+        }
+        throw new Error("no media/QA step may run before the script is approved");
+      },
+    });
+    const voice = new FakeVoiceProvider();
+    const image = new FakeImageProvider();
+    const graph = buildProductionGraph({
+      llm,
+      search: new FakeSearchProvider(),
+      storage: new FakeStorageProvider(),
+      voice,
+      image,
+      renderer: new FakeVideoRenderer(),
+    }).compile({ checkpointer: new MemorySaver() });
+    const config = { configurable: { thread_id: item.id } };
+
+    const first = await graph.invoke({ contentItemId: item.id }, config);
+    assert.equal(getInterruptStage(first), "script");
+    const [paused] = await db.select().from(contentItems).where(eq(contentItems.id, item.id));
+    assert.equal(paused?.status, "script_review");
+    assert.equal(paused?.currentStep, null);
+
+    // A decision meant for the final review is dropped: the item goes back
+    // into the script queue and the gate keeps waiting.
+    const stale = await graph.invoke(
+      new Command({ resume: { decision: "approved", decidedBy: "test-reviewer", stage: "final" } }),
+      config,
+    );
+    assert.equal(getInterruptStage(stale), "script");
+    const [reopened] = await db.select().from(contentItems).where(eq(contentItems.id, item.id));
+    assert.equal(reopened?.status, "script_review");
+
+    const revised = await graph.invoke(
+      new Command({
+        resume: {
+          decision: "changes_requested",
+          feedback: "Hook konkreter.",
+          decidedBy: "test-reviewer",
+          stage: "script",
+        },
+      }),
+      config,
+    );
+    assert.equal(getInterruptStage(revised), "script");
+    const versions = await db
+      .select()
+      .from(contentVersions)
+      .where(eq(contentVersions.contentItemId, item.id));
+    assert.equal(versions.length, 2);
+    assert.ok(versions.some((v) => v.revisionFeedback === "Hook konkreter."));
+
+    const rejected = await graph.invoke(
+      new Command({ resume: { decision: "rejected", decidedBy: "test-reviewer", stage: "script" } }),
+      config,
+    );
+    assert.equal(getInterrupt(rejected), undefined);
+
+    const [finalItem] = await db.select().from(contentItems).where(eq(contentItems.id, item.id));
+    assert.equal(finalItem?.status, "rejected");
+    assert.equal(voice.calls.length, 0);
+    assert.equal(image.calls.length, 0);
+
+    const scriptApprovals = await db.select().from(approvals).where(eq(approvals.contentItemId, item.id));
+    assert.equal(scriptApprovals.length, 2);
+    assert.ok(scriptApprovals.every((a) => a.stage === "script" && a.target === "content"));
   } finally {
     await cleanup({ workspaceId: workspace.id, campaignId: campaign.id, briefId: brief.id, itemId: item.id });
   }

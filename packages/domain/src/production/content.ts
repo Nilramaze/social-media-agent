@@ -151,9 +151,11 @@ Aufgabe: Entwickle den Content fuer dieses ${item.format} (Hook, Skript, Caption
     .returning();
   if (!version) throw new Error("Failed to insert content version");
 
+  // Every fresh version - first draft, QA retry or reviewer revision - waits
+  // for a human script approval before voice/images/rendering spend money.
   await db
     .update(contentItems)
-    .set({ currentContentVersionId: version.id, status: "in_qa" })
+    .set({ currentContentVersionId: version.id, status: "script_review" })
     .where(eq(contentItems.id, item.id));
 
   return { contentVersionId: version.id };

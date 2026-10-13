@@ -1,0 +1,1 @@
+ALTER TABLE "approvals" ADD COLUMN "stage" text DEFAULT 'final' NOT NULL;

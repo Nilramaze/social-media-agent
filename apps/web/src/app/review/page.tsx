@@ -1,22 +1,33 @@
 import { campaigns, contentBriefs, contentItems, contentPillars, db } from "@sma/db";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Both content-item gates: scripts wait before any voice/image/render spend,
+ * finished items wait after QA.
+ */
 async function getReviewItems() {
-  return db
+  const rows = await db
     .select({
       id: contentItems.id,
       format: contentItems.format,
+      status: contentItems.status,
       createdAt: contentItems.createdAt,
       topic: contentBriefs.topic,
     })
     .from(contentItems)
     .innerJoin(contentBriefs, eq(contentItems.briefId, contentBriefs.id))
-    .where(eq(contentItems.status, "ready_for_review"))
+    .where(inArray(contentItems.status, ["script_review", "ready_for_review"]))
     .orderBy(desc(contentItems.createdAt));
+  return {
+    scripts: rows.filter((r) => r.status === "script_review"),
+    finished: rows.filter((r) => r.status === "ready_for_review"),
+  };
 }
+
+type ReviewItem = Awaited<ReturnType<typeof getReviewItems>>["scripts"][number];
 
 /** Campaigns whose strategist plan waits for approval before any research runs. */
 async function getPlanReviews() {
@@ -41,8 +52,29 @@ async function getPlanReviews() {
   );
 }
 
+function ReviewItemList({ items, accent }: { items: ReviewItem[]; accent?: boolean }) {
+  return (
+    <ul className="flex flex-col gap-3">
+      {items.map((item) => (
+        <li key={item.id}>
+          <Link
+            href={`/review/${item.id}`}
+            className={`flex flex-col gap-1 rounded-lg border ${accent ? "border-agent-standby/40" : "border-border-subtle"} bg-surface-card p-5 hover:border-primary transition-colors`}
+          >
+            <span className="text-title-md text-primary font-medium">{item.topic}</span>
+            <span className="text-mono-data text-ink-muted">
+              {item.format} &middot; {new Date(item.createdAt).toLocaleString("de-DE")}
+            </span>
+          </Link>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export default async function ReviewQueuePage() {
-  const [plans, items] = await Promise.all([getPlanReviews(), getReviewItems()]);
+  const [plans, { scripts, finished }] = await Promise.all([getPlanReviews(), getReviewItems()]);
+  const nothingOpen = plans.length === 0 && scripts.length === 0 && finished.length === 0;
 
   return (
     <div className="w-full max-w-3xl mx-auto px-8 py-10 space-y-6">
@@ -77,34 +109,32 @@ export default async function ReviewQueuePage() {
         </section>
       ) : null}
 
-      <section className="space-y-3">
-        {plans.length > 0 ? (
+      {scripts.length > 0 ? (
+        <section className="space-y-3">
+          <div className="space-y-1">
+            <h2 className="text-label-sm text-ink-muted uppercase tracking-wider">
+              Skripte ({scripts.length})
+            </h2>
+            <p className="text-mono-data text-ink-muted">
+              Vertonung, Bilder und Rendering starten erst nach der Freigabe.
+            </p>
+          </div>
+          <ReviewItemList items={scripts} accent />
+        </section>
+      ) : null}
+
+      {finished.length > 0 ? (
+        <section className="space-y-3">
           <h2 className="text-label-sm text-ink-muted uppercase tracking-wider">
-            Content-Items ({items.length})
+            Fertige Content-Items ({finished.length})
           </h2>
-        ) : null}
-        {items.length === 0 ? (
-          <p className="text-body-md text-ink-muted">
-            {plans.length > 0 ? "Keine fertigen Content-Items zur Freigabe." : "Nichts zu review — alles erledigt."}
-          </p>
-        ) : (
-          <ul className="flex flex-col gap-3">
-            {items.map((item) => (
-              <li key={item.id}>
-                <Link
-                  href={`/review/${item.id}`}
-                  className="flex flex-col gap-1 rounded-lg border border-border-subtle bg-surface-card p-5 hover:border-primary transition-colors"
-                >
-                  <span className="text-title-md text-primary font-medium">{item.topic}</span>
-                  <span className="text-mono-data text-ink-muted">
-                    {item.format} &middot; {new Date(item.createdAt).toLocaleString("de-DE")}
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+          <ReviewItemList items={finished} />
+        </section>
+      ) : null}
+
+      {nothingOpen ? (
+        <p className="text-body-md text-ink-muted">Nichts zu review — alles erledigt.</p>
+      ) : null}
     </div>
   );
 }

@@ -19,6 +19,11 @@ interface PipelineItem {
 
 const POLL_INTERVAL_MS = 2000;
 
+// Script gate (before voice/images/rendering) and final media review.
+function isAwaitingReview(status: string): boolean {
+  return status === "script_review" || status === "ready_for_review";
+}
+
 function elapsedSeconds(since: string | null, now: number): number | null {
   if (!since) return null;
   return Math.max(0, Math.round((now - new Date(since).getTime()) / 1000));
@@ -157,8 +162,8 @@ export function PipelineView() {
   }, []);
 
   const active = items.filter((i) => i.currentStep);
-  const waiting = items.filter((i) => !i.currentStep && i.status === "ready_for_review");
-  const rest = items.filter((i) => !i.currentStep && i.status !== "ready_for_review");
+  const waiting = items.filter((i) => !i.currentStep && isAwaitingReview(i.status));
+  const rest = items.filter((i) => !i.currentStep && !isAwaitingReview(i.status));
   const failed = rest.filter((i) => i.status === "failed");
 
   return (
@@ -229,7 +234,9 @@ export function PipelineView() {
               >
                 <div className="min-w-0 flex-1">
                   <p className="text-body-md font-medium text-primary truncate">{item.topic}</p>
-                  <p className="text-mono-data text-ink-muted">{item.format}</p>
+                  <p className="text-mono-data text-ink-muted">
+                    {item.format} &middot; {STATUS_LABELS[item.status] ?? item.status}
+                  </p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <Link

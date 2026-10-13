@@ -59,7 +59,7 @@ async function cleanup(ids: { workspaceId: string; campaignId: string; briefId: 
   await db.delete(workspaces).where(eq(workspaces.id, ids.workspaceId));
 }
 
-test("runContent persists a content version and marks the item in_qa", async () => {
+test("runContent persists a content version and marks the item script_review", async () => {
   const { workspace, campaign, brief, item } = await seedContentItemWithResearch();
 
   try {
@@ -79,7 +79,7 @@ test("runContent persists a content version and marks the item in_qa", async () 
     assert.equal(version?.versionNumber, 1);
 
     const [updatedItem] = await db.select().from(contentItems).where(eq(contentItems.id, item.id));
-    assert.equal(updatedItem?.status, "in_qa");
+    assert.equal(updatedItem?.status, "script_review");
     assert.equal(updatedItem?.currentContentVersionId, contentVersionId);
   } finally {
     await cleanup({ workspaceId: workspace.id, campaignId: campaign.id, briefId: brief.id, itemId: item.id });

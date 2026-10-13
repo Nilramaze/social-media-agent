@@ -11,6 +11,8 @@ export const resumeGraphJobSchema = z.object({
     target: z.enum(["content", "creative"]).optional(),
     feedback: z.string().optional(),
     decidedBy: z.string(),
+    // Optional so jobs queued before the script gate existed still parse.
+    stage: z.enum(["script", "final"]).optional(),
   }),
 });
 export type ResumeGraphJobData = z.infer<typeof resumeGraphJobSchema>;

@@ -1,6 +1,7 @@
 export const STATUS_LABELS: Record<string, string> = {
   researching: "Recherche laeuft",
   drafting: "Wird geschrieben",
+  script_review: "Skript wartet auf Freigabe",
   in_qa: "Vertonung/Rendering/QA",
   needs_human_review: "Braucht manuelle Ueberarbeitung",
   ready_for_review: "Bereit zur Freigabe",

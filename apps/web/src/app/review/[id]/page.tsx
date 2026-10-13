@@ -154,13 +154,22 @@ export default async function ReviewDetailPage({
                 ))}
               </div>
               <p className="text-mono-data text-ink-muted">Version {currentVersion.versionNumber}</p>
+              {currentVersion.revisionFeedback ? (
+                <p className="text-mono-data text-ink-muted">
+                  Ueberarbeitet nach Feedback: {currentVersion.revisionFeedback}
+                </p>
+              ) : null}
             </section>
           ) : (
             <p className="text-body-md text-ink-muted">Noch keine Content-Version vorhanden.</p>
           )}
 
           {research ? (
-            <details className="rounded-xl bg-surface-card border border-border-subtle p-5">
+            // Open while reviewing the script: the research is what the claims in it rest on.
+            <details
+              open={item.status === "script_review"}
+              className="rounded-xl bg-surface-card border border-border-subtle p-5"
+            >
               <summary className="cursor-pointer text-label-sm text-ink-muted uppercase tracking-wider">
                 Recherche-Grundlage
               </summary>
@@ -258,8 +267,10 @@ export default async function ReviewDetailPage({
             ) : null}
           </div>
 
-          {item.status === "ready_for_review" ? (
-            <ReviewActions contentItemId={item.id} />
+          {item.status === "script_review" ? (
+            <ReviewActions contentItemId={item.id} stage="script" />
+          ) : item.status === "ready_for_review" ? (
+            <ReviewActions contentItemId={item.id} stage="final" />
           ) : (
             <p className="text-body-md text-ink-muted text-center">
               Wartet aktuell nicht auf Review (Status: {STATUS_LABELS[item.status] ?? item.status}).

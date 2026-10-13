@@ -1,6 +1,7 @@
 import { contentItems, db } from "@sma/db";
+import { statusAfterDecision, type ApprovalStage } from "@sma/domain";
 import { enqueueResumeGraph } from "@sma/queue";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -26,7 +27,11 @@ export async function POST(
   if (!item) {
     return NextResponse.json({ error: "Content item not found" }, { status: 404 });
   }
-  if (item.status !== "ready_for_review") {
+  // Two gates resume the same graph thread: script_review (after the content
+  // agent) and ready_for_review (after QA).
+  const stage: ApprovalStage | null =
+    item.status === "script_review" ? "script" : item.status === "ready_for_review" ? "final" : null;
+  if (!stage) {
     return NextResponse.json(
       { error: `Content item is not awaiting review (status: ${item.status})` },
       { status: 409 },
@@ -40,15 +45,35 @@ export async function POST(
     );
   }
 
-  await enqueueResumeGraph({
-    contentItemId: id,
-    resumeValue: {
-      decision: parsed.data.decision,
-      target: parsed.data.target,
-      feedback: parsed.data.feedback,
-      decidedBy: parsed.data.decidedBy ?? "agency-user",
-    },
-  });
+  // Claim the decision before queueing it: a second submit (double click,
+  // second tab) would otherwise resume the thread again - and after a script
+  // approval the next pause is the final media review. The worker sets the
+  // same status again when it records the decision.
+  const claimed = await db
+    .update(contentItems)
+    .set({ status: statusAfterDecision(stage, parsed.data.decision) })
+    .where(and(eq(contentItems.id, id), eq(contentItems.status, item.status)))
+    .returning({ id: contentItems.id });
+  if (claimed.length === 0) {
+    return NextResponse.json({ error: "Decision was already submitted" }, { status: 409 });
+  }
+
+  try {
+    await enqueueResumeGraph({
+      contentItemId: id,
+      resumeValue: {
+        decision: parsed.data.decision,
+        target: stage === "script" ? "content" : parsed.data.target,
+        feedback: parsed.data.feedback,
+        decidedBy: parsed.data.decidedBy ?? "agency-user",
+        stage,
+      },
+    });
+  } catch (err) {
+    // Nothing was queued - hand the item back to the review queue.
+    await db.update(contentItems).set({ status: item.status }).where(eq(contentItems.id, id));
+    throw err;
+  }
 
   return NextResponse.json({ status: "queued" }, { status: 202 });
 }

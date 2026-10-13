@@ -19,6 +19,7 @@ import { ReplenishControls } from "./replenish-controls";
 export const dynamic = "force-dynamic";
 
 const STATUS_DOT: Record<string, string> = {
+  script_review: "bg-agent-standby",
   ready_for_review: "bg-agent-standby",
   approved: "bg-agent-active",
   published: "bg-agent-active",
