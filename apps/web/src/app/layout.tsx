@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Hanken_Grotesk, Newsreader } from "next/font/google";
 import { Header } from "@/components/header";
+import { QueryProvider } from "@/components/query-provider";
 import { Sidebar } from "@/components/sidebar";
 import "./globals.css";
 
@@ -33,11 +34,13 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         />
       </head>
       <body className="min-h-full bg-surface font-sans text-body-md text-on-surface">
-        <Sidebar />
-        <div className="pl-64">
-          <Header />
-          <main className="pt-16 min-h-screen bg-surface">{children}</main>
-        </div>
+        <QueryProvider>
+          <Sidebar />
+          <div className="pl-64">
+            <Header />
+            <main className="pt-16 min-h-screen bg-surface">{children}</main>
+          </div>
+        </QueryProvider>
       </body>
     </html>
   );

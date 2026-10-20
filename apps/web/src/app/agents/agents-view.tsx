@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { apiFetch, queryKeys } from "@/lib/api";
 
 interface AgentItem {
   id: string;
@@ -114,37 +115,15 @@ function AgentCard({
 }
 
 export function AgentsView() {
-  const [items, setItems] = useState<AgentItem[]>([]);
-  const [planningCampaigns, setPlanningCampaigns] = useState<PlanningCampaign[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [now, setNow] = useState(() => Date.now());
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function poll() {
-      try {
-        const res = await fetch("/api/agents", { cache: "no-store" });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const body = (await res.json()) as AgentsResponse;
-        if (!cancelled) {
-          setItems(body.items);
-          setPlanningCampaigns(body.planningCampaigns);
-          setNow(Date.now());
-          setError(null);
-        }
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
-      }
-    }
-
-    poll();
-    const interval = setInterval(poll, POLL_INTERVAL_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, []);
+  const { data, error, dataUpdatedAt } = useQuery({
+    queryKey: queryKeys.agents,
+    queryFn: () => apiFetch<AgentsResponse>("/api/agents"),
+    refetchInterval: POLL_INTERVAL_MS,
+  });
+  const items = data?.items ?? [];
+  const planningCampaigns = data?.planningCampaigns ?? [];
+  // Elapsed times are measured against the last successful fetch.
+  const now = dataUpdatedAt;
 
   const scheduledQueue = items
     .filter((i): i is AgentItem & { scheduledFor: string } => i.status === "scheduled" && i.scheduledFor !== null)
@@ -152,7 +131,7 @@ export function AgentsView() {
 
   return (
     <div className="flex flex-col gap-4">
-      {error ? <p className="text-body-md text-agent-terminating">Verbindungsfehler: {error}</p> : null}
+      {error ? <p className="text-body-md text-agent-terminating">Verbindungsfehler: {error.message}</p> : null}
 
       <AgentCard
         label="Strategist"

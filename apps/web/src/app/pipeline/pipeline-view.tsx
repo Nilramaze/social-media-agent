@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { apiFetch, queryKeys } from "@/lib/api";
 import { STATUS_LABELS, STEP_LABELS } from "@/lib/labels";
 
 interface PipelineItem {
@@ -29,32 +31,36 @@ function elapsedSeconds(since: string | null, now: number): number | null {
   return Math.max(0, Math.round((now - new Date(since).getTime()) / 1000));
 }
 
-function RetryItemButton({ id, onRetried }: { id: string; onRetried: () => void }) {
-  const [pending, setPending] = useState(false);
-  const [justRetried, setJustRetried] = useState(false);
+// Refetch the pipeline right after a mutation instead of waiting for the next poll tick.
+function useInvalidatePipeline() {
+  const queryClient = useQueryClient();
+  return () => queryClient.invalidateQueries({ queryKey: queryKeys.pipeline });
+}
 
-  async function onRetry() {
-    setPending(true);
-    try {
-      const res = await fetch(`/api/content-items/${id}/retry`, { method: "POST" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      onRetried();
+function alertError(err: Error) {
+  alert(err.message);
+}
+
+function RetryItemButton({ id }: { id: string }) {
+  const invalidatePipeline = useInvalidatePipeline();
+  const [justRetried, setJustRetried] = useState(false);
+  const { mutate, isPending: pending } = useMutation({
+    mutationFn: () => apiFetch(`/api/content-items/${id}/retry`, { method: "POST" }),
+    onSuccess: () => {
+      invalidatePipeline();
       // Confirms the click registered even if it fails again within the
       // next poll tick (e.g. a still-missing API key) - otherwise a fast
       // re-fail looks indistinguishable from the button doing nothing.
       setJustRetried(true);
       setTimeout(() => setJustRetried(false), 3000);
-    } catch (err) {
-      alert(err instanceof Error ? err.message : String(err));
-    } finally {
-      setPending(false);
-    }
-  }
+    },
+    onError: alertError,
+  });
 
   return (
     <button
       type="button"
-      onClick={onRetry}
+      onClick={() => mutate()}
       disabled={pending}
       className="shrink-0 rounded border border-agent-pulse/40 px-2.5 py-1 text-label-md text-agent-pulse hover:bg-agent-pulse hover:text-on-primary transition-colors disabled:opacity-50"
     >
@@ -63,25 +69,22 @@ function RetryItemButton({ id, onRetried }: { id: string; onRetried: () => void 
   );
 }
 
-function RetryAllFailedButton({ count, onRetried }: { count: number; onRetried: () => void }) {
-  const [pending, setPending] = useState(false);
+function RetryAllFailedButton({ count }: { count: number }) {
+  const invalidatePipeline = useInvalidatePipeline();
   const [lastResult, setLastResult] = useState<number | null>(null);
-
-  async function onRetryAll() {
-    if (!window.confirm(`${count} fehlgeschlagene Content-Items erneut versuchen?`)) return;
-    setPending(true);
-    try {
-      const res = await fetch("/api/content-items/retry-failed", { method: "POST" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const body = (await res.json()) as { retried: number };
-      onRetried();
+  const { mutate, isPending: pending } = useMutation({
+    mutationFn: () => apiFetch<{ retried: number }>("/api/content-items/retry-failed", { method: "POST" }),
+    onSuccess: (body) => {
+      invalidatePipeline();
       setLastResult(body.retried);
       setTimeout(() => setLastResult(null), 4000);
-    } catch (err) {
-      alert(err instanceof Error ? err.message : String(err));
-    } finally {
-      setPending(false);
-    }
+    },
+    onError: alertError,
+  });
+
+  function onRetryAll() {
+    if (!window.confirm(`${count} fehlgeschlagene Content-Items erneut versuchen?`)) return;
+    mutate();
   }
 
   return (
@@ -101,19 +104,18 @@ function RetryAllFailedButton({ count, onRetried }: { count: number; onRetried: 
 }
 
 function DeleteItemButton({ id, topic }: { id: string; topic: string }) {
-  const [pending, setPending] = useState(false);
+  const invalidatePipeline = useInvalidatePipeline();
+  const { mutate, isPending, isSuccess } = useMutation({
+    mutationFn: () => apiFetch(`/api/content-items/${id}`, { method: "DELETE" }),
+    onSuccess: invalidatePipeline,
+    onError: alertError,
+  });
+  // Stay disabled after success until the refetch drops the row.
+  const pending = isPending || isSuccess;
 
-  async function onDelete() {
+  function onDelete() {
     if (!window.confirm(`Content-Item "${topic}" wirklich loeschen?`)) return;
-    setPending(true);
-    try {
-      const res = await fetch(`/api/content-items/${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      // next poll cycle will drop it from the list
-    } catch (err) {
-      alert(err instanceof Error ? err.message : String(err));
-      setPending(false);
-    }
+    mutate();
   }
 
   return (
@@ -129,37 +131,14 @@ function DeleteItemButton({ id, topic }: { id: string; topic: string }) {
 }
 
 export function PipelineView() {
-  const [items, setItems] = useState<PipelineItem[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [now, setNow] = useState(() => Date.now());
-  const pollRef = useRef<() => Promise<void>>(async () => {});
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function poll() {
-      try {
-        const res = await fetch("/api/pipeline", { cache: "no-store" });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const body = (await res.json()) as { items: PipelineItem[] };
-        if (!cancelled) {
-          setItems(body.items);
-          setNow(Date.now());
-          setError(null);
-        }
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
-      }
-    }
-
-    pollRef.current = poll;
-    poll();
-    const interval = setInterval(poll, POLL_INTERVAL_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, []);
+  const { data, error, dataUpdatedAt } = useQuery({
+    queryKey: queryKeys.pipeline,
+    queryFn: () => apiFetch<{ items: PipelineItem[] }>("/api/pipeline"),
+    refetchInterval: POLL_INTERVAL_MS,
+  });
+  const items = data?.items ?? [];
+  // Elapsed times are measured against the last successful fetch.
+  const now = dataUpdatedAt;
 
   const active = items.filter((i) => i.currentStep);
   const waiting = items.filter((i) => !i.currentStep && isAwaitingReview(i.status));
@@ -168,7 +147,7 @@ export function PipelineView() {
 
   return (
     <div className="flex flex-col gap-8">
-      {error ? <p className="text-body-md text-agent-terminating">Verbindungsfehler: {error}</p> : null}
+      {error ? <p className="text-body-md text-agent-terminating">Verbindungsfehler: {error.message}</p> : null}
 
       <section className="space-y-3">
         <div className="flex items-center gap-2">
@@ -261,7 +240,7 @@ export function PipelineView() {
           </span>
           {failed.length > 1 ? (
             <div className="ml-auto">
-              <RetryAllFailedButton count={failed.length} onRetried={() => pollRef.current()} />
+              <RetryAllFailedButton count={failed.length} />
             </div>
           ) : null}
         </div>
@@ -290,7 +269,7 @@ export function PipelineView() {
                   ansehen
                 </Link>
                 {item.status === "failed" ? (
-                  <RetryItemButton id={item.id} onRetried={() => pollRef.current()} />
+                  <RetryItemButton id={item.id} />
                 ) : null}
                 <DeleteItemButton id={item.id} topic={item.topic} />
               </div>

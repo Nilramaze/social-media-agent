@@ -1,33 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { apiFetch, queryKeys } from "@/lib/api";
 
 export function SidebarActivityBadge() {
-  const [activeCount, setActiveCount] = useState<number | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function poll() {
-      try {
-        const res = await fetch("/api/pipeline", { cache: "no-store" });
-        if (!res.ok) return;
-        const body = (await res.json()) as { items: { currentStep: string | null }[] };
-        if (!cancelled) {
-          setActiveCount(body.items.filter((i) => i.currentStep).length);
-        }
-      } catch {
-        // stay quiet - this is a decorative status badge, not critical
-      }
-    }
-
-    poll();
-    const interval = setInterval(poll, 4000);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, []);
+  // Errors stay quiet - this is a decorative status badge, not critical.
+  // Shares the pipeline cache with the pipeline view, so no duplicate fetches.
+  const { data: activeCount = null } = useQuery({
+    queryKey: queryKeys.pipeline,
+    queryFn: () => apiFetch<{ items: { currentStep: string | null }[] }>("/api/pipeline"),
+    select: (body) => body.items.filter((i) => i.currentStep).length,
+    refetchInterval: 4000,
+  });
 
   return (
     <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-border-subtle bg-surface-card">
